@@ -11,7 +11,8 @@ local L = ns.L
 --                                       (base + lure + gear) of step..step+24
 --   P <step> <points> <casts>           skill points gained at step..step+24
 --                                       and the casts they took
--- message "D1:<seq>:<line>;<line>;..." (at most MAX_MSG characters), prefix LdShare.
+-- message "D2:<seq>:<account token>:<line>;<line>;..." (at most MAX_MSG characters), prefix LdShare
+-- ("D1:<seq>:..." from Luredon before 1.1 is still read).
 --
 -- Others keep the latest totals per reporter (QuestdonDB-like table
 -- LuredonDB.shared: [key] = { r = { [reporter] = value }, t }) and add them up
@@ -55,8 +56,30 @@ local function DB()
   local db = ns.db
   if type(db.shared) ~= "table" then db.shared = {} end
   if type(db.shareSent) ~= "table" then db.shareSent = {} end
+  if db.sharedVersion ~= 2 then -- (1.1) see the account token below: start clean once
+    wipe(db.shared)
+    db.sharedVersion = 2
+  end
   return db
 end
+
+-- (1.1) Account token: 8 hex digits, made once per account and kept in the
+-- saved data. Messages carry it ("D2:<seq>:<token>:..."), so one account
+-- counts as ONE reporter whatever character sends, and the own echo is
+-- recognised even when the client spells the own name differently (Questdon's
+-- group test 04.10.: the own echo counted as a second player). A sender name
+-- may use one token per session; older clients send "D1" (reporter = name).
+local tokenOf = {}
+local function MyToken()
+  local db = DB()
+  local t = db.shareToken
+  if type(t) ~= "string" or not t:match("^%x%x%x%x%x%x%x%x$") then
+    t = ("%04x%04x"):format(math.random(0, 65535), math.random(0, 65535))
+    db.shareToken = t
+  end
+  return t
+end
+
 
 local function Locked()
   local fn = C_ChatInfo and C_ChatInfo.InChatMessagingLockdown
@@ -205,10 +228,19 @@ local function OnMessage(_, prefix, text, _, sender)
   local full = FullSender(sender)
   if not full then return end
   if full == MyFullName() then stats.own = stats.own + 1 return end
-  local payload = text:match("^D1:%d+:(.+)$")
+  local reporter
+  local token, payload = text:match("^D2:%d+:(%x%x%x%x%x%x%x%x):(.+)$")
+  if token then
+    if token == MyToken() then stats.own = stats.own + 1 return end
+    if tokenOf[full] and tokenOf[full] ~= token then stats.bad = stats.bad + 1 return end
+    tokenOf[full] = token
+    reporter = "a" .. token
+  else
+    payload = text:match("^D1:%d+:(.+)$") -- Luredon before 1.1
+    reporter = Hash(full)
+  end
   if not payload then stats.bad = stats.bad + 1 return end
   stats.recvMsgs = stats.recvMsgs + 1
-  local reporter = Hash(full)
   local lines = {}
   for line in payload:gmatch("[^;]+") do lines[#lines + 1] = line end
   if not Allowed(reporter, #lines) then stats.limited = stats.limited + #lines return end
@@ -299,7 +331,7 @@ function ns.ShareFlush()
   local msgs, i = 0, 1
   while i <= #pending and msgs < budget do
     seq = (seq + 1) % 1000
-    local head = ("D1:%d:"):format(seq)
+    local head = ("D2:%d:%s:"):format(seq, MyToken())
     local parts, used, size = {}, {}, #head
     while i <= #pending and size + #pending[i][3] + (#parts > 0 and 1 or 0) <= MAX_MSG do
       size = size + #pending[i][3] + (#parts > 0 and 1 or 0)

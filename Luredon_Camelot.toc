@@ -3,7 +3,7 @@
 ## Notes: Double-click fishing with automatic lures, louder splashes, gear swap, session stats and goals, catch log with records, rare catch alerts, zone skill check, camp and derby timers.
 ## Notes-deDE: Angeln per Doppelklick mit automatischem Köder, lauterem Platschen, Ausrüstungswechsel, Statistik und Fangziel, Fangbuch mit Rekorden, Hinweis bei seltenen Fängen, Zonen-Check, Camp- und Turnier-Timern.
 ## Author: DonCoohd
-## Version: 1.0.0
+## Version: 1.1.0
 ## X-Curse-Project-ID: 1723672
 ## Category: Professions
 ## IconTexture: Interface\Icons\Trade_Fishing
