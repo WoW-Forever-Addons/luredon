@@ -1,0 +1,25 @@
+name: Release
+
+# Push a tag like v1.0.1 to build the zip and upload it to CurseForge.
+# Needs the repository secret CF_API_KEY (CurseForge API token) and
+# "## X-Curse-Project-ID" in the .toc. Tags with -beta or -alpha upload as beta/alpha.
+# Nothing is uploaded on normal pushes.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: BigWigsMods/packager@v2
