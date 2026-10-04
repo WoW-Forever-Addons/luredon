@@ -34,6 +34,7 @@ end
 -- Zone the line was cast in. Getaways and catches belong to it, even if the player
 -- crossed a zone border (or a loading screen came) before the line came in.
 local castMap
+local castBucket -- (1.0.1) total skill step of the current cast
 
 local function CurrentMap()
   local mapID = ns.ZoneRequirement()
@@ -156,6 +157,12 @@ local function CheckSkill()
     if rank - s.last == 1 and s.sinceUp > 0 then
       table.insert(s.history, s.sinceUp)
       while #s.history > 20 do table.remove(s.history, 1) end
+      -- (1.0.1) account wide by skill step: skill points and their casts (Share.lua)
+      if type(ns.db.tempo) ~= "table" then ns.db.tempo = {} end
+      local step = math.floor(s.last / 25) * 25
+      local t = ns.db.tempo[step]
+      if type(t) ~= "table" then t = { p = 0, c = 0 } ns.db.tempo[step] = t end
+      t.p, t.c = (tonumber(t.p) or 0) + 1, (tonumber(t.c) or 0) + s.sinceUp
     end
     s.sinceUp = 0
   end
@@ -180,10 +187,16 @@ ns.SKILL_ESTIMATE_MIN_SAMPLES = 3
 function ns.SkillUpEstimates(rank, maxRank)
   local list = {}
   local h = ns.SkillData().history
-  if #h < ns.SKILL_ESTIMATE_MIN_SAMPLES then return list end
   rank, maxRank = rank or 0, maxRank or 0
+  -- (1.0.1) too few own samples: casts per point other players needed at this skill
+  local avg
+  if #h >= ns.SKILL_ESTIMATE_MIN_SAMPLES then
+    avg = ns.CastsPerPoint()
+  elseif ns.SharedCastsPerPoint then
+    avg = ns.SharedCastsPerPoint(rank)
+  end
+  if not avg then return list end
   if rank <= 0 or maxRank <= 0 or rank >= maxRank then return list end
-  local avg = ns.CastsPerPoint()
   local sinceUp = ns.SkillData().sinceUp or 0
   local function Add(kind, skill)
     if not skill or skill <= rank or skill > maxRank then return end
@@ -218,6 +231,18 @@ ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_START", function(_, _, _, spellID)
   local z, mapID = Zone()
   castMap = mapID
   if z then z.casts = z.casts + 1 end
+  -- (1.0.1) casts and getaways by total skill (25 point steps): which skill a zone needs,
+  -- also where no value is published (shared with guild and group, Share.lua)
+  castBucket = nil
+  local _, _, modifier = ns.GetSkill()
+  local total = (tonumber(rank) or 0) + (tonumber(modifier) or 0)
+  if z and total > 0 then
+    castBucket = math.floor(total / 25) * 25
+    if type(z.byskill) ~= "table" then z.byskill = {} end
+    local b = z.byskill[castBucket]
+    if type(b) ~= "table" then b = { c = 0, g = 0 } z.byskill[castBucket] = b end
+    b.c = (tonumber(b.c) or 0) + 1
+  end
 
   if ns.db.lureWarning and ns.GetLure() == false then
     ns.Warn(L["Your fishing pole has no lure."])
@@ -240,6 +265,8 @@ ns.On("UI_ERROR_MESSAGE", function(_, _, message)
     ns.db.lifetime.getaways = ns.db.lifetime.getaways + 1
     local z = Zone(castMap)
     if z then z.getaways = z.getaways + 1 end
+    local b = z and castBucket and type(z.byskill) == "table" and z.byskill[castBucket]
+    if type(b) == "table" then b.g = (tonumber(b.g) or 0) + 1 end
     if ns.LogGetaway then ns.LogGetaway() end -- ends the catch log's streak
     ns.NoteEvent("got-away")
   elseif ERR_FISH_NOT_HOOKED and message == ERR_FISH_NOT_HOOKED then

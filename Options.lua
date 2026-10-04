@@ -65,6 +65,7 @@ local PAGES = {
     { key = "sessionSummary", name = "Session summary in chat", tip = "When you take off your fishing pole, a short summary of the session appears in chat (casts, catches, getaways, value)." },
     { key = "auctionPrices", name = "Auction prices (Auctionator)", tip = "With Auctionator installed, the session shows the value at auction prices next to the vendor value (per hour in the tooltip), the catch log shows the price of each fish and the chat summary adds it. Only items with a scanned price are counted. Without Auctionator this does nothing.", onChange = function() ns.UpdatePanel() end },
     { header = "Alerts" },
+    { key = "shareData", name = "Share fishing data with guild and group", tip = "Sends your catches per zone, casts and getaways by skill and casts per skill point (only numbers, no names) to Luredon players in your guild and group. With their data the zone window shows catches where you have not fished yet and the skill a new zone needs. Shared data is used also when this is off." },
     { key = "rareAlert", name = "Alert for rare catches", tip = "Chat line and a sound when you catch an item of the chosen quality or better (for example camp fish, chests, pets)." },
     { key = "rareQuality", kind = "dropdown", name = "Alert from quality", tip = "Lowest item quality for the rare catch alert.", parent = "rareAlert", options = QualityOptions },
     { header = "Goal" },
@@ -125,6 +126,8 @@ local TOOLS = {
         wipe(ns.db.zones) wipe(ns.db.catches)
         ns.db.lifetime = { casts = 0, fish = 0, getaways = 0 }
         ns.ResetSkillData()
+        if type(ns.db.tempo) == "table" then wipe(ns.db.tempo) end
+        if ns.ResetShared then ns.ResetShared() end
         ns.Print(L["Fishing statistics deleted."])
       end
     end, "Deletes catches per zone, all-time numbers and skill-up history." },

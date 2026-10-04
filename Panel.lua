@@ -77,16 +77,37 @@ local function ZoneTooltip()
     lines[#lines + 1] = { L["Your skill with bonus"], rank + modifier, (rank + modifier) >= need and "good" or "critical" }
     -- Too low here: point to the zones that fit (1.14).
     if rank + modifier < need then lines[#lines + 1] = L["/ld zones lists zones for your skill."] end
-  elseif ns.IsNewForeverZone(mapID) then
-    lines[#lines + 1] = L["New Forever zone: skill needed not published yet."]
   else
-    lines[#lines + 1] = L["Requirement unknown for this zone."]
+    -- (1.0.1) measured by other players (guild and group)
+    local sneed, who
+    if ns.SharedZoneSkill then sneed, who = ns.SharedZoneSkill(mapID) end
+    if sneed then
+      lines[#lines + 1] = { L["Skill needed (reported)"], L["%d (%d players)"]:format(sneed, who) }
+      lines[#lines + 1] = { L["Your skill with bonus"], rank + modifier, (rank + modifier) >= sneed and "good" or "critical" }
+    elseif ns.IsNewForeverZone(mapID) then
+      lines[#lines + 1] = L["New Forever zone: skill needed not published yet."]
+    else
+      lines[#lines + 1] = L["Requirement unknown for this zone."]
+    end
   end
   local top = ns.ZoneTopCatches(mapID, 8)
   local z = ns.db.zones[mapID]
   if #top == 0 or not z then
-    lines[#lines + 1] = L["No data yet."]
-    return title, lines
+    -- (1.0.1) never fished here: what other players caught
+    local others, total, who = {}, 0, 0
+    if ns.SharedZoneCatches then others, total, who = ns.SharedZoneCatches(mapID, 8) end
+    if #others == 0 then
+      lines[#lines + 1] = L["No data yet."]
+      return title, lines
+    end
+    lines[#lines + 1] = { header = L["Fish (reported by others)"] }
+    for _, e in ipairs(others) do
+      local left = ItemText(e.id)
+      if IsRare(e.id) then left = left .. " " .. Style.Colorize(L["(rare)"], "warning") end
+      lines[#lines + 1] = { left, Style.Percent(e.share) }
+    end
+    lines[#lines + 1] = { L["Catches reported"], L["%s by %d players"]:format(Style.Number(total), who) }
+    return title, lines, L["You have no catches here yet. Shared by Luredon players in your guild and group."]
   end
   -- Fish: the most frequent catches with their share.
   lines[#lines + 1] = { header = L["Fish"] }
@@ -117,6 +138,8 @@ local function ZoneTooltip()
   end
   return title, lines, L["From all your sessions in this zone."]
 end
+
+ns.ZoneTooltipLines = ZoneTooltip -- (1.0.1) for tests: title, lines, hint
 
 local function SessionTooltip()
   local s = ns.session
@@ -398,7 +421,12 @@ local function UpdateZone(rank, modifier, known)
   if need then
     KV(rows.zone, zoneName, L["min. skill %d"]:format(need), total >= need and "good" or "critical")
   else
-    KV(rows.zone, zoneName, L["unknown"], "textHint")
+    local sneed = ns.SharedZoneSkill and ns.SharedZoneSkill(mapID) -- (1.0.1) reported by other players
+    if sneed then
+      KV(rows.zone, zoneName, L["min. skill %d (reported)"]:format(sneed), total >= sneed and "good" or "critical")
+    else
+      KV(rows.zone, zoneName, L["unknown"], "textHint")
+    end
   end
   local parts = need and partsNeed and total < partsNeed
   Visible(rows.zoneParts, parts and true or false)

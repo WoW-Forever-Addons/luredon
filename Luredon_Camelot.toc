@@ -25,6 +25,7 @@ Timers.lua
 Panel.lua
 Log.lua
 Export.lua
+Share.lua
 Diag.lua
 SettingsUI.lua
 Options.lua

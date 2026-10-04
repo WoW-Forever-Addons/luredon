@@ -42,6 +42,10 @@ ns.defaults = {
   logPos = nil,         -- 1.17: position of the catch log window
   logCollapsed = false, -- 1.17: catch log window shows only its title bar
   fishingView = "off",  -- 1.17: while the line is out: "off", "compact" (title bar only) or "faded" (no background)
+  shareData = true,     -- 1.0.1: send own fishing totals to guild and group (Share.lua)
+  shared = {},          -- 1.0.1: totals other players reported, per key and reporter
+  shareSent = {},       -- 1.0.1: [key] = the total last sent
+  tempo = {},           -- 1.0.1: [skill step] = { p = skill points, c = casts } (account wide)
 }
 
 ---------------------------------------------------------------------------
