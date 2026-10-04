@@ -64,6 +64,25 @@ local function IsRare(id)
 end
 
 local RARE_LIST = 5 -- rare catches listed in the zone tooltip
+local ZONE_FISH_LIST = 8 -- (1.2) kinds listed from the zone's fish list
+
+-- (1.2) "Fish in this zone" lines from the bundled list: name, share; caught ones
+-- (onlyNew = false) with a mark. Returns the number of lines added.
+local function ZoneFishLines(lines, list, onlyNew)
+  local n = 0
+  for _, e in ipairs(list) do
+    if e.data and (not onlyNew or e.caught == 0) then
+      if n >= ZONE_FISH_LIST then break end
+      n = n + 1
+      local left = ItemText(e.id)
+      if e.kind == "c" then left = left .. " " .. Style.Colorize(L["(container)"], "textHint")
+      elseif IsRare(e.id) then left = left .. " " .. Style.Colorize(L["(rare)"], "warning") end
+      local right = e.share and ("~" .. Style.Percent(e.share)) or ""
+      lines[#lines + 1] = { left, right, "textSecondary" }
+    end
+  end
+  return n
+end
 
 local function ZoneTooltip()
   local mapID, need, partsNeed = ns.ZoneRequirement()
@@ -92,12 +111,23 @@ local function ZoneTooltip()
   end
   local top = ns.ZoneTopCatches(mapID, 8)
   local z = ns.db.zones[mapID]
+  local fishList, kinds, caughtKinds
+  if ns.ZoneFishList then fishList, kinds, caughtKinds = ns.ZoneFishList(mapID) end
   if #top == 0 or not z then
+    -- (1.2) never fished here: what the zone has (bundled list)
+    local listed = 0
+    if fishList and #fishList > 0 then
+      lines[#lines + 1] = { header = L["Fish in this zone"] }
+      listed = ZoneFishLines(lines, fishList, false)
+    elseif fishList then
+      lines[#lines + 1] = L["No fishing waters known in this zone."]
+    end
     -- (1.0.1) never fished here: what other players caught
     local others, total, who = {}, 0, 0
     if ns.SharedZoneCatches then others, total, who = ns.SharedZoneCatches(mapID, 8) end
     if #others == 0 then
-      lines[#lines + 1] = L["No data yet."]
+      if listed > 0 then return title, lines, L["Shares according to Wowhead. You have no catches here yet."] end
+      if not fishList then lines[#lines + 1] = L["No data yet."] end
       return title, lines
     end
     lines[#lines + 1] = { header = L["Fish (reported by others)"] }
@@ -135,6 +165,13 @@ local function ZoneTooltip()
       lines[#lines + 1] = { ItemText(rareList[i].id), rareList[i].count }
     end
     lines[#lines + 1] = { L["Rare (uncommon or better)"], Style.Percent(rare / total) }
+  end
+  -- (1.2) what the zone still has for you
+  if fishList and kinds > 0 then
+    lines[#lines + 1] = { L["Kinds caught here"], ("%d / %d"):format(caughtKinds, kinds), caughtKinds >= kinds and "good" or nil }
+    local header = #lines + 1
+    lines[header] = { header = L["Not caught here yet"] }
+    if ZoneFishLines(lines, fishList, true) == 0 then table.remove(lines, header) end
   end
   return title, lines, L["From all your sessions in this zone."]
 end

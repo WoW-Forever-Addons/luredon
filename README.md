@@ -62,7 +62,10 @@ Ein Charakter, der Angeln noch nicht erlernt hat, bekommt sie erst, sobald er es
     Daten wie Riverglades, Hyjal, Shen'dralas zeigen "unbekannt", der Tooltip nennt sie als neues Forever-Gebiet ohne veröffentlichten Wert),
     Teilgebiete mit höherem Bedarf (Jaguero-Insel 300, Bucht der Stürme 425, Jademirsee 425), gemessene Entkommen-Quote.
     Tooltip: Abschnitt "Fische" mit deinen häufigsten Fängen der Zone und Anteil (seltene markiert), Abschnitt "Selten" mit den seltenen
-    Fängen der Zone (auch außerhalb der Top-Liste) und ihrem Anteil
+    Fängen der Zone (auch außerhalb der Top-Liste) und ihrem Anteil,
+    dazu "Hier gefangene Arten" (z. B. 2 / 3) und "Hier noch nicht gefangen" mit dem ungefähren Anteil laut Wowhead. Hast du in der Zone noch
+    nichts gefangen, zeigt der Tooltip "Fische in dieser Zone" mit allen bekannten Arten und Behältern. Die Liste stammt von den Wowhead-Zonenseiten
+    (Reiter "Fishing", Stand 04.10.2026) für alle Zonen bis Stufe 30 und die Hauptstädte; Ironforge hat keine Angelgewässer
   - Camp: Timer für Fischregal und Fischerhütte (startet beim Aufstellen, nicht beim Herstellen), Fischglas-Buff (läuft im Kampf weiter),
     nächstes Camp-Objekt nach Grundskill (Fischglas ab 20, Fischregal ab 140, Fischerhütte ab 300; ab 300 entfällt die Zeile).
     Camping ist in Forever eine eigene Mechanik; ein Lagerfeuer-Timer ist bewusst nicht dabei (keine gesicherten Spell- oder Aura-IDs).
@@ -88,7 +91,7 @@ Ein Charakter, der Angeln noch nicht erlernt hat, bekommt sie erst, sobald er es
   Einklappen zeigt nur die Titelzeile, Sperren verhindert das Verschieben, im Kampf kann das Fenster auf 40 % abdunkeln.
 - Fangbuch (`/ld log`, Klick auf die Sitzungszahlen im Fenster oder Werkzeug in den Optionen): dauerhaftes Protokoll je Fischart über alle
   Sitzungen und Charaktere des Accounts. Kompaktes Fenster im gemeinsamen Stil mit der Zahl der Arten, zwei Rekorden (längste Serie Fänge
-  ohne Entkommen, beste Sitzung in Fischen pro Stunde ab 10 Minuten Angelzeit, Plunder zählt nicht) und einer Liste aller gefangenen Arten,
+  ohne Entkommen, beste Sitzung in Fischen pro Stunde ab 10 Minuten Angelzeit, Plunder zählt nicht), dem Abschnitt "Diese Zone" (welche Arten es in deiner aktuellen Zone gibt, wie viele davon du dort schon gefangen hast, "neu" für die übrigen) und einer Liste aller gefangenen Arten,
   meist gefangene zuerst, zehn pro Seite. Der Tooltip einer Art nennt Anzahl, erstes und letztes Fangdatum und die Zone.
   Gespeichert wird nur die Gegenstands-ID mit Zählern (keine Namen, kein Charakter), höchstens 150 Arten: ist das Buch voll,
   fliegt die Art mit dem ältesten letzten Fang zuerst raus. Plunder (graue Gegenstände) kommt nicht hinein, zählt aber für die Serie.

@@ -15,6 +15,7 @@ ns.LOG_SCHEMA = 1   -- layout of LuredonDB.logbook; raise it when the layout cha
 ns.LOG_MAX = 150    -- kinds kept
 local BEST_MIN_ACTIVE = 600 -- a session counts for the fish per hour record from 10 minutes of fishing
 local PAGE_SIZE = 10
+local ZONE_ROWS = 8 -- (1.2) kinds of the current zone listed
 local WIDTH = 280
 local DEFAULT_POINT = { "RIGHT", "RIGHT", -320, 60 }
 
@@ -284,6 +285,38 @@ function ns.UpdateLog()
   Style.KeyValue(rows.kinds, L["Kinds"], ("%d / %d"):format(kinds, ns.LOG_MAX))
   Style.KeyValue(rows.total, L["Caught"], Style.Number(total))
 
+  -- (1.2) this zone: which kinds it has, which you caught here
+  local mapID = ns.ZoneRequirement and ns.ZoneRequirement()
+  local zl, kinds, caught
+  if ns.ZoneFishList then zl, kinds, caught = ns.ZoneFishList(mapID) end
+  local showZone = zl ~= nil and #zl > 0
+  headers.zone:SetShown(showZone)
+  rows.zoneSum:SetShown(showZone)
+  if showZone then
+    Style.KeyValue(rows.zoneSum, ZoneText(mapID), L["%d of %d kinds"]:format(caught, kinds), caught >= kinds and "good" or nil)
+  end
+  local shown = 0
+  for i, row in ipairs(rows.zone) do
+    local e
+    if showZone then
+      -- the data's kinds first (fish and containers), then own extras
+      e = zl[i]
+    end
+    row:SetShown(e and true or false)
+    if e then
+      shown = shown + 1
+      local text = ItemText(e.id)
+      if e.kind == "c" then text = text .. " " .. Style.Colorize(L["(container)"], "textHint") end
+      row._zoneEntry = e
+      row:SetText(text, "textPrimary")
+      if e.caught > 0 then
+        row:SetValue(Style.Number(e.caught), "good")
+      else
+        row:SetValue(L["new"], "accent")
+      end
+    end
+  end
+
   local pages = PageCount(#list)
   if page > pages then page = pages end
   if page < 1 then page = 1 end
@@ -343,6 +376,23 @@ local function Create()
   rows.kinds = Style.Row(panel)
   rows.total = Style.Row(panel)
 
+  -- (1.2) this zone
+  headers.zone = Style.Header(panel, L["This zone"])
+  rows.zoneSum = Style.Row(panel)
+  rows.zone = {}
+  for i = 1, ZONE_ROWS do
+    local row = Style.Row(panel)
+    row:SetTooltip(function(r)
+      local e = r._zoneEntry
+      if not e then return end
+      local lines = {}
+      if e.share then lines[#lines + 1] = { L["Share in this zone"], "~" .. Style.Percent(e.share) } end
+      lines[#lines + 1] = { L["Caught here"], e.caught > 0 and Style.Number(e.caught) or L["not yet"] }
+      return ItemText(e.id), lines, e.data and L["Shares according to Wowhead."] or L["Not in the list for this zone: caught by you."]
+    end)
+    rows.zone[i] = row
+  end
+
   headers.fish = Style.Header(panel, L["Fish"])
   rows.empty = Style.Row(panel)
   rows.fish = {}
@@ -400,3 +450,8 @@ function ns.ToggleLog(show)
     panel:FadeOut()
   end
 end
+
+-- (1.2) the section "This zone" follows you
+ns.On("ZONE_CHANGED_NEW_AREA", function()
+  if panel and panel:IsShown() then ns.UpdateLog() end
+end)

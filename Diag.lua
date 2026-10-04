@@ -232,6 +232,7 @@ local function Extras(out)
     Show(rec.streak), Show(rec.fph), ns.LogStreak(), ns.logSkipped.secret or 0)
   out[#out + 1] = ("fishing view: mode %s, active %s"):format(Show(ns.db.fishingView), Show(ns.FishingViewActive and ns.FishingViewActive()))
   if ns.ShareDiag then out[#out + 1] = ns.ShareDiag() end -- 1.0.1
+  if ns.ZoneFishDiag then out[#out + 1] = "zone fish: " .. ns.ZoneFishDiag() end -- 1.2
 end
 
 local function Decisions(out)
