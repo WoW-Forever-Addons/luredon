@@ -1,0 +1,10 @@
+<Bindings>
+	<Binding name="CLICK LuredonCastButton:LeftButton" header="LUREDON" category="ADDONS">
+	</Binding>
+	<Binding name="LUREDON_GEAR" category="ADDONS">
+		Luredon_ToggleGear()
+	</Binding>
+	<Binding name="LUREDON_PANEL" category="ADDONS">
+		Luredon_TogglePanel()
+	</Binding>
+</Bindings>
