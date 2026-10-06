@@ -153,6 +153,111 @@ local function TextWidth(fs)
   return ceil(#plain * FontSize(fs) * 0.55), false
 end
 
+---------------------------------------------------------------------------
+-- (i18n) Text that has to fit a width. Other languages are often longer than
+-- English, so a text first gets up to FIT_SHRINK points smaller (never under
+-- FIT_MIN). Only if that is not enough:
+--   mode "cut" (default): one line, cut with "..." by the game; the whole text
+--     stays in Style.FullText(fs) for a tooltip;
+--   mode "wrap": back to the normal size, the caller lets it wrap as before.
+-- A text that fits gets its own width (at most the budget), so frames anchored
+-- to its right edge stay where they belong. Every cut or wrap is noted in
+-- Style.TextCuts (text -> width, budget, mode) for /diag and the tests.
+---------------------------------------------------------------------------
+Style.FIT_SHRINK, Style.FIT_MIN = 2, 9
+Style.TextCuts = {}
+
+local function BaseFont(fs)
+  local base = fs._fitBase
+  if not base then
+    local ok, path, size, flags = Call(fs, "GetFont")
+    size = ok and tonumber(size)
+    if not (ok and type(path) == "string" and size and size > 0) then return nil end
+    base = { path, size, flags }
+    fs._fitBase = base
+  end
+  return base
+end
+
+local function SetSize(fs, base, size)
+  if fs._fitSize ~= size then
+    Call(fs, "SetFont", base[1], size, base[3])
+    fs._fitSize = size
+  end
+end
+
+-- Width of the whole text on one line (even when it is cut on screen).
+local function NaturalWidth(fs)
+  local ok, w = Call(fs, "GetUnboundedStringWidth")
+  if ok and type(w) == "number" and w == w and w > 0 then return w end
+  ok, w = Call(fs, "GetStringWidth")
+  if ok and type(w) == "number" and w == w and w > 0 then return w end
+  return nil
+end
+
+function Style.FitText(fs, budget, mode)
+  budget = tonumber(budget)
+  if not fs or not budget or budget <= 0 or budget ~= budget then return true end
+  local wrap = mode == "wrap"
+  local text0 = fs.GetText and fs:GetText()
+  if type(text0) == "string" and text0:find("\n", 1, true) then return true end -- several lines on purpose
+  -- same text, same space, same mode as last time: nothing to do (relayouts are frequent)
+  local key = tostring(text0) .. "\0" .. budget .. (wrap and "w" or "c")
+  if fs._fitKey == key and fs._fitDone ~= nil then return fs._fitDone end
+  local result = Style._Fit(fs, budget, wrap)
+  fs._fitKey, fs._fitDone = key, result
+  return result
+end
+
+function Style._Fit(fs, budget, wrap)
+  local base = BaseFont(fs)
+  if base then SetSize(fs, base, base[2]) end
+  if not wrap then
+    Call(fs, "SetWordWrap", false)
+    Call(fs, "SetWidth", 0)
+  end
+  local w = NaturalWidth(fs)
+  if not w then fs._fitFull = nil return true end -- nothing to show or not measurable yet
+  local size = base and base[2]
+  local low0 = base and max(Style.FIT_MIN, base[2] - Style.FIT_SHRINK)
+  local hopeless = wrap and base and w * low0 / base[2] > budget * 1.02
+  if base and w > budget and not hopeless then
+    local low = max(Style.FIT_MIN, base[2] - Style.FIT_SHRINK)
+    while w > budget and size > low do
+      size = size - 1
+      SetSize(fs, base, size)
+      w = NaturalWidth(fs) or w * size / (size + 1)
+    end
+  end
+  if w <= budget + 0.5 then
+    fs._fitFull = nil
+    if not wrap then Call(fs, "SetWidth", min(budget, ceil(w) + 1)) end
+    return true
+  end
+  local text = fs:GetText()
+  if type(text) == "string" and text ~= "" then
+    Style.TextCuts[text] = { width = ceil(w), budget = floor(budget), mode = wrap and "wrap" or "cut", size = size }
+  end
+  if wrap then
+    if base then SetSize(fs, base, base[2]) end -- wrapped at the normal size reads better
+    fs._fitFull = nil
+  else
+    Call(fs, "SetWidth", budget)
+    fs._fitFull = text
+  end
+  return false
+end
+
+-- The whole text of a cut FontString (nil when nothing was cut).
+function Style.FullText(fs) return fs and fs._fitFull end
+
+-- Number of texts cut or wrapped so far (diag).
+function Style.TextCutCount()
+  local n = 0
+  for _ in pairs(Style.TextCuts) do n = n + 1 end
+  return n
+end
+
 -- Size of one physical screen pixel in the frame's coordinates.
 local function Pixel(frame)
   local ok, _, h = pcall(GetPhysicalScreenSize)
@@ -655,16 +760,26 @@ local function RowLayout(row, width)
   local inner = max(16, width - left - right)
   local vw, vh = 0, 0
   if HasText(row.value) then
-    local w, okW = TextWidth(row.value)
-    if not okW then ok = false end
     local maxV
     local spec = row._valueMax
     if spec then
       maxV = spec <= 1 and floor(inner * spec) or floor(spec)
       maxV = max(1, min(maxV, inner - 16 - S.valueGap))
-      vw = row._valueFixed and maxV or min(w, maxV)
     else
       maxV = floor(inner * 0.5)
+      -- (i18n) a short label leaves the rest of the line to the value (longer languages)
+      if HasText(row.text) then
+        local lw, okL = TextWidth(row.text)
+        if okL and lw < inner * 0.5 then maxV = max(maxV, floor(inner - lw - S.valueGap)) end
+      end
+    end
+    -- (i18n) a little smaller before it wraps (longer languages)
+    Style.FitText(row.value, maxV, "wrap")
+    local w, okW = TextWidth(row.value)
+    if not okW then ok = false end
+    if spec then
+      vw = row._valueFixed and maxV or min(w, maxV)
+    else
       vw = min(w, maxV)
     end
     row.value:SetWidth(vw)
@@ -678,6 +793,7 @@ local function RowLayout(row, width)
     row.value:Hide()
   end
   local tw = max(16, inner - (vw > 0 and (vw + S.valueGap) or 0))
+  Style.FitText(row.text, tw, "wrap")
   row.text:SetWidth(tw)
   row.text:ClearAllPoints()
   row.text:SetPoint("TOPLEFT", row, "TOPLEFT", left, -textY)

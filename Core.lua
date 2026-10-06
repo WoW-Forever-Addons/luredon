@@ -289,10 +289,10 @@ function ns.Money(copper)
 end
 
 -- Number with decimals in the client's notation (deDE "9,0", enUS "9.0").
--- DECIMAL_SEPARATOR comes from the client's global strings; the locale is the fallback.
+-- DECIMAL_SEPERATOR (Blizzard's spelling) comes from the client's global strings; the locale is the fallback.
 local COMMA_LOCALES = { deDE = true, frFR = true, esES = true, esMX = true, itIT = true, ptBR = true, ruRU = true }
 function ns.DecimalSeparator()
-  local sep = DECIMAL_SEPARATOR
+  local sep = rawget(_G, "DECIMAL_SEPERATOR") or rawget(_G, "DECIMAL_SEPARATOR")
   if type(sep) == "string" and ns.Usable(sep) and sep ~= "" then return sep end
   return COMMA_LOCALES[GetLocale and GetLocale() or ""] and "," or "."
 end
@@ -312,8 +312,8 @@ function ns.Duration(seconds)
   local h = math.floor(seconds % 86400 / 3600)
   local m = math.floor(seconds % 3600 / 60)
   local s = seconds % 60
-  if d > 0 then return ("%dd %dh"):format(d, h) end
-  if h > 0 then return ("%d:%02d h"):format(h, m) end
+  if d > 0 then return ns.L["%dd %dh"]:format(d, h) end
+  if h > 0 then return ns.L["%d:%02d h"]:format(h, m) end
   return ("%d:%02d"):format(m, s)
 end
 

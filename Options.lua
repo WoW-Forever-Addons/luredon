@@ -19,7 +19,7 @@ end
 
 -- 1.17: fishing view; "off" first, it is the default.
 local function ViewOptions()
-  return { { "off", L["Off"] }, { "compact", L["Compact"] }, { "faded", L["Without background"] } }
+  return { { "off", L["No change"] }, { "compact", L["Compact"] }, { "faded", L["Without background"] } }
 end
 
 local function SetOptions()
@@ -112,7 +112,7 @@ local TOOLS = {
   { "Reset session", "Reset", function() ns.ResetSession() UpdatePanel() end, "Starts the session statistics from zero." },
   { "Reset position", "Reset", function() ns.ResetPanelPosition() end, "Puts the window back to its default place." },
   { "Zones for your skill", "Show", function() ns.PrintBestZones() end, "Lists in chat the zones where nothing gets away with your skill (incl. lure and gear) and the next tier." },
-  { "Catch log", "Show", function() ns.ToggleLog(true) end, "Opens the catch log: every kind of fish you caught with counts, first and last catch and your records." },
+  { "Fishing book", "Show", function() ns.OpenBook("log") end, "Opens the fishing book: your sessions, every kind of fish (caught and still missing) and every zone with the skill it needs. /ld book" },
   { "Export catch log", "Show", function() ns.ShowLogExport() end, "Shows the catch log as text to copy. Contains no character or realm names." },
   { "Delete catch log", "Delete", function()
       if ns.Confirm("log", L["Click again within 5 seconds to delete the catch log."]) then
@@ -157,7 +157,8 @@ local HELP = {
   { "/ld resetpos", L["window back to its place"] },
   { "/ld camp rack|hut", L["start a camp timer by hand"] },
   { L["/ld derby <day> <hour> | reset"], L["Fishing Extravaganza start (realm time)"] },
-  { L["/ld log [export]"], L["catch log (window, export)"] },
+  { "/ld book", L["fishing book (logbook, fish atlas, waters)"] },
+  { L["/ld log [export]"], L["fish atlas, catch log export"] },
   { "/ld export", L["catch data to copy"] },
   { "/ld diag", L["report for troubleshooting"] },
 }
@@ -260,6 +261,12 @@ local function Slash(msg)
     SlashGoal(rest)
   elseif cmd == "derby" then
     SlashDerby(rest)
+  elseif cmd == "book" then
+    ns.ToggleBook()
+  elseif cmd == "atlas" then
+    ns.ToggleBook("atlas")
+  elseif cmd == "waters" then
+    ns.ToggleBook("waters")
   elseif cmd == "log" then
     if rest:lower() == "export" then ns.ShowLogExport() else ns.ToggleLog() end
   elseif cmd == "export" then

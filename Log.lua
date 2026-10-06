@@ -14,10 +14,6 @@ local Style = ns.Style
 ns.LOG_SCHEMA = 1   -- layout of LuredonDB.logbook; raise it when the layout changes
 ns.LOG_MAX = 150    -- kinds kept
 local BEST_MIN_ACTIVE = 600 -- a session counts for the fish per hour record from 10 minutes of fishing
-local PAGE_SIZE = 10
-local ZONE_ROWS = 8 -- (1.2) kinds of the current zone listed
-local WIDTH = 280
-local DEFAULT_POINT = { "RIGHT", "RIGHT", -320, 60 }
 
 local function ServerNow() return GetServerTime and GetServerTime() or time() end
 
@@ -151,7 +147,7 @@ function ns.LogCatch(id, quantity, mapID, quality, newCatch)
   local zone = Count(mapID)
   if zone then e.lz = zone end
   CheckRate(rec, now)
-  if ns.logPanel and ns.logPanel:IsShown() then ns.UpdateLog() end
+  if ns.UpdateBook then ns.UpdateBook() end
 end
 
 -- Sorted kinds: { {id, entry}, ... } most caught first.
@@ -178,7 +174,7 @@ function ns.LogReset()
   ns.db.logbook = nil
   ns.MigrateLog(ns.db)
   streak = 0
-  if ns.logPanel and ns.logPanel:IsShown() then ns.UpdateLog() end
+  if ns.UpdateBook then ns.UpdateBook() end
   return true
 end
 
@@ -216,242 +212,20 @@ function ns.ShowLogExport()
 end
 
 ---------------------------------------------------------------------------
--- Window
+-- (1.3) The catch log window became the tab "Fish atlas" of the fishing book
+-- (Book.lua): every kind with count, first and last catch, where it bites.
+-- /ld log and the old entry points open it there.
 ---------------------------------------------------------------------------
-local panel
-local rows, headers = {}, {}
-local page = 1
-
--- Position and collapsed state are the window's own; size, opacity, lock and combat dimming
--- follow the main window (same settings page).
-local SHARED = { locked = "panelLocked", scale = "panelScale", alpha = "panelAlpha", combatFade = "combatFade" }
-local OWN = { pos = "logPos", collapsed = "logCollapsed" }
-local function Get(key)
-  local k = SHARED[key] or OWN[key]
-  if k and ns.db then return ns.db[k] end
-end
-local function Set(key, value)
-  local k = OWN[key]
-  if k and ns.db then ns.db[k] = value end
-end
-
-local function DateText(ts)
-  ts = Num(ts)
-  if not ts or ts <= 0 then return "-" end
-  local fmt = GetLocale and GetLocale() == "deDE" and "%d.%m.%Y" or "%Y-%m-%d"
-  local f = date or (os and os.date)
-  local ok, text = pcall(f, fmt, ts)
-  return ok and type(text) == "string" and text or "-"
-end
-
-local function ZoneText(mapID)
-  mapID = Count(mapID)
-  if not mapID or mapID <= 0 then return L["unknown"] end
-  return ns.MapName(mapID) or L["unknown"]
-end
-
-local function ItemText(id)
-  local name, link = ns.GetItemInfo(id)
-  return link or name or ("item:" .. id)
-end
-
-local function PageCount(total) return math.max(1, math.ceil(total / PAGE_SIZE)) end
-
-local function FishTooltip(id, e)
-  local lines = {
-    { L["Caught"], Style.Number(e.n) },
-    { L["First catch"], ("%s, %s"):format(DateText(e.first), ZoneText(e.fz)) },
-    { L["Last catch"], ("%s, %s"):format(DateText(e.last), ZoneText(e.lz)) },
-  }
-  -- (1.0) auction price per piece (Auctionator), only if there is one
-  if ns.AuctionPricesOn() then
-    local price = ns.AuctionPrice(id)
-    lines[#lines + 1] = { L["Auction price"], price and ns.Money(price) or L["no price"] }
-  end
-  return ItemText(id), lines, L["Counted from all your sessions on this account."]
-end
-
-function ns.UpdateLog()
-  if not panel then return end
-  local list = ns.LogEntries()
-  local kinds, total = ns.LogTotals()
-  local lb = ns.db.logbook
-  local rec = type(lb) == "table" and type(lb.records) == "table" and lb.records or {}
-
-  local streakRec = rec.streak or 0
-  Style.KeyValue(rows.streak, L["Longest streak"], streakRec > 0 and L["%d catches in a row"]:format(streakRec) or "-")
-  local rate = rec.fph or 0
-  Style.KeyValue(rows.rate, L["Best session"], rate > 0 and L["%s fish/h"]:format(ns.Decimal(rate, 1)) or "-")
-  Style.KeyValue(rows.kinds, L["Kinds"], ("%d / %d"):format(kinds, ns.LOG_MAX))
-  Style.KeyValue(rows.total, L["Caught"], Style.Number(total))
-
-  -- (1.2) this zone: which kinds it has, which you caught here
-  local mapID = ns.ZoneRequirement and ns.ZoneRequirement()
-  local zl, kinds, caught
-  if ns.ZoneFishList then zl, kinds, caught = ns.ZoneFishList(mapID) end
-  local showZone = zl ~= nil and #zl > 0
-  headers.zone:SetShown(showZone)
-  rows.zoneSum:SetShown(showZone)
-  if showZone then
-    Style.KeyValue(rows.zoneSum, ZoneText(mapID), L["%d of %d kinds"]:format(caught, kinds), caught >= kinds and "good" or nil)
-  end
-  local shown = 0
-  for i, row in ipairs(rows.zone) do
-    local e
-    if showZone then
-      -- the data's kinds first (fish and containers), then own extras
-      e = zl[i]
-    end
-    row:SetShown(e and true or false)
-    if e then
-      shown = shown + 1
-      local text = ItemText(e.id)
-      if e.kind == "c" then text = text .. " " .. Style.Colorize(L["(container)"], "textHint") end
-      row._zoneEntry = e
-      row:SetText(text, "textPrimary")
-      if e.caught > 0 then
-        row:SetValue(Style.Number(e.caught), "good")
-      else
-        row:SetValue(L["new"], "accent")
-      end
-    end
-  end
-
-  local pages = PageCount(#list)
-  if page > pages then page = pages end
-  if page < 1 then page = 1 end
-  rows.empty:SetShown(#list == 0)
-  if #list == 0 then rows.empty:SetText(L["No catches in the log yet."], "textHint") end
-  for i, row in ipairs(rows.fish) do
-    local item = list[(page - 1) * PAGE_SIZE + i]
-    row:SetShown(item and true or false)
-    if item then
-      row._logID, row._logEntry = item.id, item.e
-      local text = ItemText(item.id)
-      local q = ns.ItemQuality(item.id)
-      if q and q >= ns.RARE_QUALITY then text = text .. " " .. Style.Colorize(L["(rare)"], "warning") end
-      row:SetText(text, "textPrimary")
-      row:SetValue(Style.Number(item.e.n), "textPrimary")
-    end
-  end
-  rows.page:SetShown(pages > 1)
-  if pages > 1 then rows.page:SetText(L["Page %d of %d"]:format(page, pages), "textHint") end
-  local prev, nextB = panel:GetButton("prev"), panel:GetButton("next")
-  if prev then prev:SetEnabled(page > 1) end
-  if nextB then nextB:SetEnabled(page < pages) end
-
-  rows.locked:SetShown(ns.logLocked and true or false)
-  if ns.logLocked then rows.locked:SetText(L["The log comes from a newer Luredon version and stays unchanged."], "textHint") end
-  local skipped = ns.logSkipped.secret or 0
-  rows.skipped:SetShown(skipped > 0)
-  if skipped > 0 then rows.skipped:SetText(L["Skipped this session: %d unreadable loot lines."]:format(skipped), "textHint") end
-end
-
-local function ChangePage(delta)
-  page = page + delta
-  ns.UpdateLog()
-end
-
-local function Create()
-  panel = Style.Panel("LuredonLogPanel", UIParent, {
-    title = Style.Wordmark("Lure", "don") .. "  " .. Style.Colorize(L["Catch log"], "textSecondary"),
-    width = WIDTH,
-    close = true,
-    collapse = true,
-    get = Get,
-    set = Set,
-    defaultPoint = DEFAULT_POINT,
-    closeTooltip = { L["Close"], nil, L["/ld log shows it again."] },
-    collapseTooltip = { L["Collapse / expand"], nil, L["Collapsed, only the title bar stays."] },
-    onCollapse = function(_, collapsed) if not collapsed then ns.UpdateLog() end end,
-    buttons = {
-      { kind = "forward", key = "next", tooltip = { L["Next page"] }, onClick = function() ChangePage(1) end },
-      { kind = "back", key = "prev", tooltip = { L["Previous page"] }, onClick = function() ChangePage(-1) end },
-    },
-  })
-
-  headers.records = Style.Header(panel, L["Records"])
-  rows.streak = Style.Row(panel)
-  rows.rate = Style.Row(panel)
-  rows.kinds = Style.Row(panel)
-  rows.total = Style.Row(panel)
-
-  -- (1.2) this zone
-  headers.zone = Style.Header(panel, L["This zone"])
-  rows.zoneSum = Style.Row(panel)
-  rows.zone = {}
-  for i = 1, ZONE_ROWS do
-    local row = Style.Row(panel)
-    row:SetTooltip(function(r)
-      local e = r._zoneEntry
-      if not e then return end
-      local lines = {}
-      if e.share then lines[#lines + 1] = { L["Share in this zone"], "~" .. Style.Percent(e.share) } end
-      lines[#lines + 1] = { L["Caught here"], e.caught > 0 and Style.Number(e.caught) or L["not yet"] }
-      return ItemText(e.id), lines, e.data and L["Shares according to Wowhead."] or L["Not in the list for this zone: caught by you."]
-    end)
-    rows.zone[i] = row
-  end
-
-  headers.fish = Style.Header(panel, L["Fish"])
-  rows.empty = Style.Row(panel)
-  rows.fish = {}
-  for i = 1, PAGE_SIZE do
-    local row = Style.Row(panel)
-    row:SetTooltip(function(r) if r._logEntry then return FishTooltip(r._logID, r._logEntry) end end)
-    rows.fish[i] = row
-  end
-  rows.page = Style.Row(panel)
-  rows.locked = Style.Row(panel)
-  rows.skipped = Style.Row(panel)
-  rows.export = Style.Row(panel):SetText(L["Copy as text"], "accent"):SetGapBefore(Style.SPACING.section)
-  rows.export:SetOnClick(function(_, button)
-    if button == nil or button == "LeftButton" then ns.ShowLogExport() end
-  end)
-  rows.export:SetTooltip(function()
-    return L["Catch log export"], nil, L["Opens the export window. Contains no character or realm names."]
-  end)
-
-  -- Left clicks stay in the window, the right button reaches the world (camera turning);
-  -- a double right-click on it never casts (Cast.lua checks the pointer).
-  local parts = { panel._header }
-  for _, item in ipairs(panel._items or {}) do
-    if item._kind == "row" then parts[#parts + 1] = item end
-  end
-  ns.RightClickThrough(panel, parts)
-  Style.CombatFade(panel, ns.db.combatFade)
-  panel:SetLocked(ns.db.panelLocked, true)
-  panel:SetPanelScale(ns.db.panelScale or 1, true)
-  panel:SetBackgroundAlpha(ns.db.panelAlpha, true)
-  ns.logPanel = panel
-  if ns.ApplyFishingView then ns.ApplyFishingView(panel) end
-end
-
-function ns.ApplyLogSettings()
-  if not panel then return end
-  panel:SetLocked(ns.db.panelLocked, true)
-  panel:SetPanelScale(ns.db.panelScale or 1, true)
-  panel:SetBackgroundAlpha(ns.db.panelAlpha, true)
-  Style.CombatFade(panel, ns.db.combatFade)
-end
-
--- show: nil toggles, true/false sets.
 function ns.ToggleLog(show)
-  if not panel then
-    if show == false then return end
-    Create()
+  if show == false then
+    if ns.bookFrame then ns.bookFrame:Hide() end
+    return
   end
-  if show == nil then show = not panel:IsShown() end
-  if show then
-    page = 1
-    ns.UpdateLog()
-    panel:FadeIn()
-  else
-    panel:FadeOut()
+  if show == nil and ns.bookFrame and ns.bookFrame:IsShown() and ns.BookTab and ns.BookTab() == "atlas" then
+    ns.bookFrame:Hide()
+    return
   end
+  if ns.OpenBook then ns.OpenBook("atlas") end
 end
-
--- (1.2) the section "This zone" follows you
-ns.On("ZONE_CHANGED_NEW_AREA", function()
-  if panel and panel:IsShown() then ns.UpdateLog() end
-end)
+function ns.UpdateLog() if ns.UpdateBook then ns.UpdateBook() end end
+function ns.ApplyLogSettings() end

@@ -111,8 +111,8 @@ local function ZoneTooltip()
   end
   local top = ns.ZoneTopCatches(mapID, 8)
   local z = ns.db.zones[mapID]
-  local fishList, kinds, caughtKinds
-  if ns.ZoneFishList then fishList, kinds, caughtKinds = ns.ZoneFishList(mapID) end
+  local fishList, kinds, caughtKinds, classic
+  if ns.ZoneFishList then fishList, kinds, caughtKinds, classic = ns.ZoneFishList(mapID) end
   if #top == 0 or not z then
     -- (1.2) never fished here: what the zone has (bundled list)
     local listed = 0
@@ -126,7 +126,11 @@ local function ZoneTooltip()
     local others, total, who = {}, 0, 0
     if ns.SharedZoneCatches then others, total, who = ns.SharedZoneCatches(mapID, 8) end
     if #others == 0 then
-      if listed > 0 then return title, lines, L["Shares according to Wowhead. You have no catches here yet."] end
+      if listed > 0 then
+        -- (1.3) zones above level 30: classic data until Forever has its own
+        if classic then return title, lines, L["Shares from Wowhead's Classic data, not confirmed for Forever yet. You have no catches here yet."] end
+        return title, lines, L["Shares according to Wowhead. You have no catches here yet."]
+      end
       if not fishList then lines[#lines + 1] = L["No data yet."] end
       return title, lines
     end
@@ -160,7 +164,7 @@ local function ZoneTooltip()
   -- Rare: uncommon or better, also those outside the top list.
   if rare > 0 then
     table.sort(rareList, function(x, y) if x.count ~= y.count then return x.count > y.count end return x.id < y.id end)
-    lines[#lines + 1] = { header = L["Rare"] }
+    lines[#lines + 1] = { header = L["Rare (catches)"] }
     for i = 1, math.min(#rareList, RARE_LIST) do
       lines[#lines + 1] = { ItemText(rareList[i].id), rareList[i].count }
     end
@@ -170,7 +174,7 @@ local function ZoneTooltip()
   if fishList and kinds > 0 then
     lines[#lines + 1] = { L["Kinds caught here"], ("%d / %d"):format(caughtKinds, kinds), caughtKinds >= kinds and "good" or nil }
     local header = #lines + 1
-    lines[header] = { header = L["Not caught here yet"] }
+    lines[header] = { header = classic and L["Not caught here yet (Classic data)"] or L["Not caught here yet"] }
     if ZoneFishLines(lines, fishList, true) == 0 then table.remove(lines, header) end
   end
   return title, lines, L["From all your sessions in this zone."]
@@ -276,10 +280,10 @@ local function Create()
   rows.fishH = Style.Row(panel):SetTooltip(SessionTooltip)
   rows.value = Style.Row(panel):SetTooltip(SessionTooltip)
   rows.valueAH = Style.Row(panel):SetTooltip(SessionTooltip) -- (1.0) only with Auctionator
-  -- 1.17: a click on the session numbers opens the catch log.
+  -- 1.17: a click on the session numbers opens the catch log. (1.3) Now the fishing book's logbook.
   for _, r in ipairs({ rows.catches, rows.rate, rows.fishH, rows.value, rows.valueAH }) do
     r:SetOnClick(function(_, button)
-      if button == nil or button == "LeftButton" then ns.ToggleLog() end
+      if button == nil or button == "LeftButton" then ns.OpenBook("log") end
     end)
   end
   rows.goal = Style.Row(panel)
@@ -287,6 +291,7 @@ local function Create()
 
   headers.zone = Style.Header(panel, L["Zone"])
   rows.zone = Style.Row(panel):SetTooltip(ZoneTooltip)
+  rows.zone:SetOnClick(function(_, button) if button == nil or button == "LeftButton" then ns.OpenBook("waters") end end)
   rows.zoneParts = Style.Row(panel):SetTooltip(ZoneTooltip)
   rows.zoneGetaways = Style.Row(panel):SetTooltip(ZoneTooltip)
 
@@ -300,6 +305,16 @@ local function Create()
   rows.derbySource = Style.Row(panel):SetTooltip(DerbyTooltip)
   rows.tasty = Style.Row(panel)
   bars.tasty = Style.Bar(rows.tasty)
+
+  -- (1.3) the fishing book, a clear line of its own
+  rows.book = Style.Row(panel):SetGapBefore(Style.SPACING.section)
+  rows.book:SetIcon("Interface\\Icons\\INV_Misc_Book_09", false, { 0.08, 0.92, 0.08, 0.92 })
+  rows.book:SetText(L["Fishing book"], "accent")
+  rows.book:SetValue("/ld book", "textHint")
+  rows.book:SetOnClick(function(_, button) if button == nil or button == "LeftButton" then ns.ToggleBook() end end)
+  rows.book:SetTooltip(function()
+    return L["Fishing book"], nil, L["Your sessions, every kind of fish and every zone with the skill it needs. /ld book"]
+  end)
 
   -- Next click: quiet hint at the bottom, separated like a section.
   rows.next = Style.Row(panel):SetGapBefore(Style.SPACING.section)
@@ -328,6 +343,7 @@ local function UpdateFishing()
   -- 1.16: without Fishing one quiet line (no warning colour): the window has nothing else to say.
   Visible(rows.notLearned, not known)
   if not known then Line(rows.notLearned, L["Fishing not learned yet. Visit a fishing trainer."], "textSecondary") end
+  Visible(rows.book, known) -- (1.3) nothing to look up before Fishing is learned
 
   -- Skill with bar (base skill against the current cap)
   Visible(rows.skill, known)

@@ -79,6 +79,7 @@ local function Header(out)
     Show(ns.db.panelScale), Show(ns.db.panelAlpha), Show(ns.db.panelCollapsed), Show(ns.db.combatFade),
     pos and ("%s %s %s %s"):format(Show(pos[1]), Show(pos[2]), Show(pos[3]), Show(pos[4])) or "default",
     Show(ns.Style and ns.Style.VERSION))
+  out[#out + 1] = "texts cut: " .. Show(ns.Style and ns.Style.TextCutCount and ns.Style.TextCutCount())
   -- 1.16: which timers run (none without pole and without Fishing learned).
   out[#out + 1] = ("tickers: window %s, lure check %s"):format(Show(ns.PanelTicking and ns.PanelTicking()),
     Show(ns.LureTicking and ns.LureTicking()))

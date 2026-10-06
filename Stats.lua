@@ -82,6 +82,7 @@ local function CharKey()
 end
 -- Asked again after a loading screen (and by the tests after a character change).
 function ns.ResetCharKey() charKey = nil end
+ns.CharKey = CharKey -- (1.3) the fishing book keeps its sessions per character
 ns.On("PLAYER_ENTERING_WORLD", function() charKey = nil end)
 
 local function NewSkill() return { last = 0, sinceUp = 0, history = {} } end
@@ -149,7 +150,8 @@ ns.On("PLAYER_ENTERING_WORLD", function()
 end)
 
 local function CheckSkill()
-  local rank = ns.GetSkill()
+  local rank, maxRank = ns.GetSkill()
+  if ns.BookSkill then ns.Call("book skill", ns.BookSkill, rank, maxRank) end
   local s = ns.SkillData()
   if rank > 0 and s.last > 0 and rank > s.last then
     -- Only a single point with casts behind it is a sample. A jump of several points (fished
@@ -231,6 +233,7 @@ ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_START", function(_, _, _, spellID)
   local z, mapID = Zone()
   castMap = mapID
   if z then z.casts = z.casts + 1 end
+  if ns.BookCast then ns.Call("book cast", ns.BookCast, mapID) end -- (1.3) fishing book sessions
   -- (1.0.1) casts and getaways by total skill (25 point steps): which skill a zone needs,
   -- also where no value is published (shared with guild and group, Share.lua)
   castBucket = nil
@@ -268,6 +271,7 @@ ns.On("UI_ERROR_MESSAGE", function(_, _, message)
     local b = z and castBucket and type(z.byskill) == "table" and z.byskill[castBucket]
     if type(b) == "table" then b.g = (tonumber(b.g) or 0) + 1 end
     if ns.LogGetaway then ns.LogGetaway() end -- ends the catch log's streak
+    if ns.BookGetaway then ns.Call("book getaway", ns.BookGetaway) end
     ns.NoteEvent("got-away")
   elseif ERR_FISH_NOT_HOOKED and message == ERR_FISH_NOT_HOOKED then
     session.missed = session.missed + 1
@@ -404,6 +408,12 @@ local function RecordItem(c, id, quantity, quality, source, link)
   end
   ns.NoteEvent(source or "loot", ("item:%d x%d q%s"):format(id, quantity, tostring(quality)))
   Debug(("+%d item:%d"):format(quantity, id))
+  -- (1.3) fishing book: before the catch log, so a kind caught for the first time is known
+  if ns.BookCatch then
+    local lb = ns.db.logbook
+    local newKind = type(lb) == "table" and type(lb.fish) == "table" and lb.fish[id] == nil
+    ns.Call("book catch", ns.BookCatch, id, quantity, quality, zoneMap, newKind)
+  end
   -- 1.17: catch log (item ID, count, zone, quality only; protected, a failure never stops the catch).
   if ns.LogCatch then ns.Call("catch log", ns.LogCatch, id, quantity, zoneMap, quality, newCatch) end
   ns.Call("rare alert", RareAlert, id, quality, link)

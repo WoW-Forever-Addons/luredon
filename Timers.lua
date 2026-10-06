@@ -95,13 +95,68 @@ function ns.DerbyState()
   return "upcoming", untilStart * 60
 end
 
--- Weekday names for /ld derby (English and German, first two letters are enough).
-local DAYS = { su = 1, so = 1, mo = 2, tu = 3, di = 3, we = 4, mi = 4, th = 5, ["do"] = 5, fr = 6, sa = 7 }
+-- Weekday names for /ld derby: the client's own day names (Blizzard's WEEKDAY_SUNDAY ..
+-- WEEKDAY_SATURDAY, the start is enough when only one day begins like that), then English
+-- (first two letters). German two-letter forms only in the German and English client, so
+-- "do" means domingo in a Spanish or Portuguese client.
+local DAYS_EN = { su = 1, mo = 2, tu = 3, we = 4, th = 5, fr = 6, sa = 7 }
+local DAYS_DE = { so = 1, mo = 2, di = 3, mi = 4, ["do"] = 5, fr = 6, sa = 7 }
+local WEEKDAY_GLOBALS = { "WEEKDAY_SUNDAY", "WEEKDAY_MONDAY", "WEEKDAY_TUESDAY", "WEEKDAY_WEDNESDAY",
+  "WEEKDAY_THURSDAY", "WEEKDAY_FRIDAY", "WEEKDAY_SATURDAY" }
+-- lower case incl. Cyrillic capitals (string.lower only knows ASCII): Воскресенье = воскресенье
+local function Lower(s)
+  s = s:lower()
+  s = s:gsub("\208([\144-\159])", function(c) return "\208" .. string.char(c:byte() + 32) end)
+  s = s:gsub("\208([\160-\175])", function(c) return "\209" .. string.char(c:byte() - 32) end)
+  return (s:gsub("\208\129", "\209\145")) -- Ё
+end
+-- accents off (miércoles = miercoles, sábado = sabado, terça = terca)
+local ACCENTS = { ["á"] = "a", ["à"] = "a", ["â"] = "a", ["ã"] = "a", ["é"] = "e", ["è"] = "e", ["ê"] = "e",
+  ["í"] = "i", ["î"] = "i", ["ó"] = "o", ["ô"] = "o", ["õ"] = "o", ["ú"] = "u", ["û"] = "u", ["ç"] = "c",
+  ["Á"] = "a", ["É"] = "e", ["Í"] = "i", ["Ó"] = "o", ["Ú"] = "u", ["Ç"] = "c" }
+local function Fold(s)
+  return (s:gsub("[\195][\128-\191]", function(c) return ACCENTS[c] end))
+end
+-- short day names players type: Russian пн..вс, Chinese 日/一..六 (after 星期, 週, 周, 禮拜)
+local SHORT = { ["вс"] = 1, ["пн"] = 2, ["вт"] = 3, ["ср"] = 4, ["чт"] = 5, ["пт"] = 6, ["сб"] = 7,
+  ["日"] = 1, ["天"] = 1, ["一"] = 2, ["二"] = 3, ["三"] = 4, ["四"] = 5, ["五"] = 6, ["六"] = 7 }
+local function ShortDay(text)
+  for _, p in ipairs({ "星期", "週", "周", "禮拜" }) do
+    if text:sub(1, #p) == p then text = text:sub(#p + 1) break end
+  end
+  return SHORT[text]
+end
+local function LocalDay(text)
+  local short = ShortDay(text)
+  if short then return short end
+  text = Fold(text)
+  if #text < 2 then return nil end
+  local found
+  for i, g in ipairs(WEEKDAY_GLOBALS) do
+    local name = rawget(_G, g)
+    if type(name) == "string" and name ~= "" then
+      name = Fold(Lower(name))
+      if name == text then return i end
+      if name:sub(1, #text) == text then
+        if found and found ~= i then return nil end -- two days start like that
+        found = i
+      end
+    end
+  end
+  return found
+end
 function ns.ParseWeekday(text)
-  text = tostring(text or ""):lower()
+  text = Lower(tostring(text or ""))
   local n = tonumber(text)
   if n then return (n >= 1 and n <= 7) and math.floor(n) or nil end
-  return DAYS[text:sub(1, 2)]
+  local day = LocalDay(text)
+  if day then return day end
+  local loc = type(GetLocale) == "function" and GetLocale() or "enUS"
+  if loc == "deDE" or loc == "enUS" or loc == "enGB" then
+    day = DAYS_DE[text:sub(1, 2)]
+    if day and (loc == "deDE" or not DAYS_EN[text:sub(1, 2)]) then return day end
+  end
+  return DAYS_EN[text:sub(1, 2)]
 end
 
 -- Tastyfish alert: once per contest, when the bags hold the fish needed for the turn-in.

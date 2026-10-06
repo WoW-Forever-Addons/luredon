@@ -176,7 +176,8 @@ ns.QueuePrepare = QueuePrepare
 local ownWindows = {}
 local function OverOwnWindow()
   ownWindows[1], ownWindows[2], ownWindows[3] = ns.panel or false, ns.exportFrame or false, ns.logPanel or false
-  for i = 1, 3 do
+  ownWindows[4] = ns.bookFrame or false -- (1.3) the fishing book
+  for i = 1, 4 do
     local f = ownWindows[i]
     if f then
       local okV, visible = pcall(f.IsVisible, f)
