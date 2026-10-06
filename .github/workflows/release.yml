@@ -1,6 +1,7 @@
 name: Release
 
-# Push a tag like v1.0.1 to build the zip and upload it to CurseForge.
+# Builds the zip and uploads it to GitHub and CurseForge for a version tag like v1.0.1.
+# Starts when such a tag is pushed, or when "Version" (version.yml) tags a new version.
 # Needs the repository secret CF_API_KEY (CurseForge API token) and
 # "## X-Curse-Project-ID" in the .toc. Tags with -beta or -alpha upload as beta/alpha.
 # Nothing is uploaded on normal pushes.
@@ -8,12 +9,14 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     env:
       GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}

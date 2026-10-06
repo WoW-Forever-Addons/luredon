@@ -1,0 +1,39 @@
+name: Version
+
+# A push to main that raises "## Version:" in the .toc to a version without a tag
+# creates the tag v<version> and starts the release (release.yml) for it.
+# Pushes that keep the version, or whose tag already exists, do nothing.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "*.toc"
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag a new version and start the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          toc=$(ls *.toc | head -n 1)
+          version=$(grep -m 1 '^## Version:' "$toc" | sed 's/^## Version:[[:space:]]*//' | tr -d '\r[:space:]')
+          if [ -z "$version" ]; then echo "No version in $toc"; exit 1; fi
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "$tag exists already, nothing to release."
+            exit 0
+          fi
+          git tag "$tag"
+          git push origin "$tag"
+          gh workflow run release.yml --ref "$tag"
+          echo "Tagged $tag and started the release."
