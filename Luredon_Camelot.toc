@@ -10,7 +10,7 @@
 ## Notes-koKR: 더블 클릭 낚시와 자동 미끼, 더 큰 첨벙 소리, 장비 전환, 세션 통계와 목표, 최고 기록이 담긴 낚시 기록, 희귀 획득 알림, 지역 숙련도 확인, 야영 및 낚시왕 선발 대회 타이머.
 ## Notes-zhTW: 雙擊釣魚並自動裝上魚餌，另有加大水花聲、切換裝備、釣魚統計與目標、含最佳紀錄的漁獲紀錄、稀有漁獲提醒、區域技能檢查，以及營地與釣魚大賽計時器。
 ## Author: DonCoohd
-## Version: 1.2.0
+## Version: 1.3.0
 ## X-Curse-Project-ID: 1723672
 ## Category: Professions
 ## Category-frFR: Métiers
