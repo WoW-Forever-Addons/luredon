@@ -1,5 +1,12 @@
 # Changes
 
+## 1.4.0
+
+- **Fish without the interface:** if you like, Luredon hides the whole game interface while your line is out, like Alt+Z, and brings it back when you move, a fight starts, you change the target or get a whisper. Your catches show as a ticker at the top of the screen. Luredon asks once; change it any time under Options > Casting and lures. A skill point shows under your catches, and warnings such as full bags or a missing lure appear there in red, since the game's own error line is hidden too.
+- **Lure warning:** "Your fishing pole has no lure" now only comes on the first two casts without one in a row. Fishing without a lure on purpose stays quiet; with a lure on the pole the count starts again.
+- **Start zones:** below skill 25 the window no longer shows the zone's skill in red as if something were wrong. It says calmly from which skill no fish gets away (Zephras Isle, where the Skyborne start, and the other start zones).
+- **Window buttons:** the buttons in the Luredon windows can be clicked again when an action bar addon such as Bartender4 sits underneath.
+
 ## 1.3.0
 
 - **Fishing book:** a new large window with three tabs. Open it with /ld book or the "Fishing book" line in the Luredon window.
