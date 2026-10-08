@@ -3,6 +3,8 @@ local L = ns.L
 
 local IDLE_GAP = 90 -- seconds without fishing that do not count as fishing time
 local BAGS_LOW = 2  -- warn from this many free bag slots on
+local NO_LURE_WARNINGS, noLureCasts = 2, 0 -- (1.4) lure warning: the first two casts without one
+function ns.NoLureCasts() return noLureCasts end
 
 local session
 function ns.ResetSession()
@@ -153,6 +155,8 @@ local function CheckSkill()
   local rank, maxRank = ns.GetSkill()
   if ns.BookSkill then ns.Call("book skill", ns.BookSkill, rank, maxRank) end
   local s = ns.SkillData()
+  -- (1.4) a skill point while the interface is hidden: a line under the catch ticker
+  if rank > 0 and s.last > 0 and rank > s.last and ns.TickerSkill then ns.Call("skill ticker", ns.TickerSkill, rank, maxRank, rank - s.last) end
   if rank > 0 and s.last > 0 and rank > s.last then
     -- Only a single point with casts behind it is a sample. A jump of several points (fished
     -- without the addon, skill raised elsewhere) or a point without casts would skew the average.
@@ -247,8 +251,14 @@ ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_START", function(_, _, _, spellID)
     b.c = (tonumber(b.c) or 0) + 1
   end
 
-  if ns.db.lureWarning and ns.GetLure() == false then
-    ns.Warn(L["Your fishing pole has no lure."])
+  -- (1.4) Daniel 08.10.: some fish without a lure on purpose. The warning comes on the
+  -- first two casts without one in a row; a lure on the pole starts the count again.
+  local lure = ns.GetLure()
+  if lure == false then
+    noLureCasts = noLureCasts + 1
+    if ns.db.lureWarning and noLureCasts <= NO_LURE_WARNINGS then ns.Warn(L["Your fishing pole has no lure."]) end
+  elseif lure then
+    noLureCasts = 0
   end
   if ns.db.bagWarning then
     local free = ns.FreeBagSlots()
@@ -417,6 +427,8 @@ local function RecordItem(c, id, quantity, quality, source, link)
   -- 1.17: catch log (item ID, count, zone, quality only; protected, a failure never stops the catch).
   if ns.LogCatch then ns.Call("catch log", ns.LogCatch, id, quantity, zoneMap, quality, newCatch) end
   ns.Call("rare alert", RareAlert, id, quality, link)
+  -- (1.4) catch ticker while the interface is hidden (HideUI.lua)
+  if ns.TickerCatch then ns.Call("catch ticker", ns.TickerCatch, id, quantity, quality, session.items[id]) end
   goalWatchUntil = GetTime() + GOAL_WATCH
   ns.CheckGoal(true)
 end

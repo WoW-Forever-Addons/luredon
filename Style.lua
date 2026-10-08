@@ -58,6 +58,7 @@ local S = {
 Style.SPACING = S
 
 Style.DEFAULT_ALPHA = 0.82
+local PANEL_LEVEL = 60
 Style.COMBAT_ALPHA = 0.40
 Style.FADE_TIME = 0.15
 Style.SCALE_MIN, Style.SCALE_MAX = 0.6, 1.6
@@ -1646,7 +1647,7 @@ function PanelMethods:Relayout() return Style.Relayout(self) end
 
 -- opts: title, width, get(key), set(key, value), close (bool), collapse (bool),
 -- onClose(panel), onCollapse(panel, collapsed), buttons ({ kind, onClick, tooltip, hint }),
--- defaultPoint ({ point, relPoint, x, y }), strata.
+-- defaultPoint ({ point, relPoint, x, y }), strata, level (frame level, default PANEL_LEVEL).
 -- v2: collapseKeep (n), tooltipAnchor ("auto" default for rows); closeTooltip,
 -- collapseTooltip and buttons[].tooltip may be { title, lines, hint }.
 -- Keys used with get/set: "pos", "locked", "scale", "alpha", "collapsed", "combatFade", "shown".
@@ -1662,6 +1663,11 @@ function Style.Panel(name, parent, opts)
   p:SetWidth(p._width)
   p:SetHeight(S.header + 2 * S.padY)
   Call(p, "SetFrameStrata", opts.strata or "MEDIUM")
+  -- Above action bar addons in the same strata (Bartender4 bars sit at
+  -- level 5, its art up to 52): a faded-out bar is invisible but still takes
+  -- the clicks meant for the panel's buttons. Set before the children exist,
+  -- they are created one level above.
+  Call(p, "SetFrameLevel", tonumber(opts.level) or PANEL_LEVEL)
   p:SetMovable(true)
   p:EnableMouse(false)
   Call(p, "SetClampedToScreen", true)

@@ -41,6 +41,7 @@ ns.defaults = {
   logbook = {},         -- 1.17: catch log (schema, fish per item ID, records), see Log.lua
   logPos = nil,         -- 1.17: position of the catch log window
   logCollapsed = false, -- 1.17: catch log window shows only its title bar
+  hideUI = false,       -- (1.4) hide the whole interface while the line is out (asked once: askedHideUI)
   fishingView = "off",  -- 1.17: while the line is out: "off", "compact" (title bar only) or "faded" (no background)
   shareData = true,     -- 1.0.1: send own fishing totals to guild and group (Share.lua)
   shared = {},          -- 1.0.1: totals other players reported, per key and reporter
@@ -253,6 +254,11 @@ function ns.Report(heading, text, detail)
 end
 
 function ns.Warn(msg)
+  -- (1.4) interface hidden while fishing: the game's error line cannot be seen, the ticker says it
+  if ns.InterfaceHidden and ns.InterfaceHidden() and ns.TickerWarn then
+    ns.TickerWarn(msg)
+    return
+  end
   if UIErrorsFrame and UIErrorsFrame.AddMessage then
     UIErrorsFrame:AddMessage(msg, 1, 0.82, 0)
   else

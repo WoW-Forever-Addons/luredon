@@ -461,6 +461,7 @@ local function UpdateSession(known)
   end
 end
 
+local START_TIER = 25 -- the zone skill of the start zones
 local function UpdateZone(rank, modifier, known)
   if not known then
     HideAll({ headers.zone, rows.zone, rows.zoneParts, rows.zoneGetaways })
@@ -471,7 +472,11 @@ local function UpdateZone(rank, modifier, known)
   local total = rank + modifier
   local mapID, need, partsNeed = ns.ZoneRequirement()
   local zoneName = ZoneName(mapID) or L["Zone"]
-  if need then
+  if need and total < need and need <= START_TIER then
+    -- (Daniel 08.10.) start zones: a new fisher starts below 25 and cannot have it yet (the
+    -- Skyborne start on Zephras Isle); fish may get away, nothing is wrong. Said calmly.
+    KV(rows.zone, zoneName, L["no getaways from skill %d"]:format(need), "textHint")
+  elseif need then
     KV(rows.zone, zoneName, L["min. skill %d"]:format(need), total >= need and "good" or "critical")
   else
     local sneed = ns.SharedZoneSkill and ns.SharedZoneSkill(mapID) -- (1.0.1) reported by other players

@@ -232,6 +232,11 @@ local function Extras(out)
     Show(lb.schema), ns.LOG_SCHEMA, ns.logLocked and "locked (newer schema)" or "ok", kinds, ns.LOG_MAX, total,
     Show(rec.streak), Show(rec.fph), ns.LogStreak(), ns.logSkipped.secret or 0)
   out[#out + 1] = ("fishing view: mode %s, active %s"):format(Show(ns.db.fishingView), Show(ns.FishingViewActive and ns.FishingViewActive()))
+  -- (1.4) whole interface hidden while fishing
+  local hs = ns.hideUIStats or {}
+  out[#out + 1] = ("hide interface: option %s, asked %s, hidden now %s, hides %s, shows %s, failed %s, last back %s, ticker lines %s, api %s"):format(
+    Show(ns.db.hideUI), Show(ns.db.askedHideUI), Show(ns.InterfaceHidden and ns.InterfaceHidden()), Show(hs.hides), Show(hs.shows),
+    Show(hs.failed), Show(hs.lastReason), Show(hs.lines), Show(type(SetUIVisibility) == "function"))
   if ns.ShareDiag then out[#out + 1] = ns.ShareDiag() end -- 1.0.1
   if ns.ZoneFishDiag then out[#out + 1] = "zone fish: " .. ns.ZoneFishDiag() end -- 1.2
 end

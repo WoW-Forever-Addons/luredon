@@ -39,8 +39,11 @@ local PAGES = {
     { key = "fishingView", kind = "dropdown", name = "Windows while fishing", tip = "While the line is out, Luredon's own windows shrink to the title bar (Compact) or lose their background (Without background). They return a few seconds after the line comes in and in combat. Only Luredon's windows are touched, never the game's interface.", options = ViewOptions, onChange = function()
       if ns.FishingViewChanged then ns.FishingViewChanged() end
     end },
+    { key = "hideUI", name = "Hide the interface while fishing", tip = "When the line goes out, the whole game interface hides, like Alt+Z. Your catches show at the top of the screen. It comes back when you move, a fight starts, you change the target, get a whisper or the loot window opens.", onChange = function()
+      if ns.ApplyHideUI then ns.ApplyHideUI() end
+    end },
     { header = "Warnings" },
-    { key = "lureWarning", name = "Warn when casting without lure", tip = "Shows a warning when you cast without a lure." },
+    { key = "lureWarning", name = "Warn when casting without lure", tip = "Shows a warning on the first two casts without a lure in a row, so fishing without one on purpose stays quiet." },
     { key = "bagWarning", name = "Warn when bags are full", tip = "Shows a warning when you cast with full or almost full bags (2 free slots or less)." },
   } },
   { title = "Splash", tip = "Louder splashes and interact range.", items = {
