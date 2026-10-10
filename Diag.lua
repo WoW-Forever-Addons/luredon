@@ -237,6 +237,13 @@ local function Extras(out)
   out[#out + 1] = ("hide interface: option %s, asked %s, hidden now %s, hides %s, shows %s, failed %s, last back %s, ticker lines %s, api %s"):format(
     Show(ns.db.hideUI), Show(ns.db.askedHideUI), Show(ns.InterfaceHidden and ns.InterfaceHidden()), Show(hs.hides), Show(hs.shows),
     Show(hs.failed), Show(hs.lastReason), Show(hs.lines), Show(type(SetUIVisibility) == "function"))
+  -- (1.4.1) Alt+Z by the player, bobber pointer
+  out[#out + 1] = ("hide interface by player: released %s, left alone %s, watch %s, auto loot tip %s"):format(
+    Show(hs.released or 0), Show(hs.playerHidden or 0), Show(ns.HideWatchRunning and ns.HideWatchRunning()), Show(ns.db.autoLootHinted or false))
+  if ns.BobberPointerState then
+    local bp = ns.BobberPointerState()
+    out[#out + 1] = ("bobber pointer: option %s, line out %s, ticking %s, shown %s"):format(Show(ns.db.bobberCursor), Show(bp.lineOut), Show(bp.ticking), Show(bp.shown))
+  end
   if ns.ShareDiag then out[#out + 1] = ns.ShareDiag() end -- 1.0.1
   if ns.ZoneFishDiag then out[#out + 1] = "zone fish: " .. ns.ZoneFishDiag() end -- 1.2
 end

@@ -84,10 +84,12 @@ local function Close(cb)
   if type(o) ~= "table" then return end
   cb.open = nil
   if (Num(o.c) or 0) <= 0 and (Num(o.f) or 0) <= 0 then return end
+  -- (1.4.1) m: missed bites (the line came in by itself)
   local entry = { k = "s", t = o.t, t2 = o.l, z = MainZone(o), c = o.c, f = o.f, j = o.j, g = o.g, a = o.a,
-    v = o.v, ah = (Num(o.ah) or 0) > 0 and o.ah or nil, s0 = o.s0, s1 = o.s1, nw = o.nw }
+    v = o.v, ah = (Num(o.ah) or 0) > 0 and o.ah or nil, s0 = o.s0, s1 = o.s1, nw = o.nw, m = (Num(o.m) or 0) > 0 and o.m or nil }
   Add(cb, entry)
   local a, f = Num(o.a) or 0, Num(o.f) or 0
+  local closed = entry
   if a >= MIN_RATE_SECONDS and f > 0 then
     local rate = math.floor(f / (a / 3600) * 10 + 0.5) / 10
     local best = type(cb.best) == "table" and Num(cb.best.fph) or 0
@@ -98,6 +100,7 @@ local function Close(cb)
       cb.best = { fph = rate, t = o.l, z = entry.z }
     end
   end
+  return closed
 end
 ns.BookCloseSession = function() Close(CharBook()) end
 
@@ -127,6 +130,14 @@ function ns.BookCast(mapID)
   o.c = (Num(o.c) or 0) + 1
   mapID = Num(mapID)
   if mapID then o.zc[mapID] = (Num(o.zc[mapID]) or 0) + 1 end
+end
+
+-- (1.4.1) the line came in by itself (Stats.lua decides)
+function ns.BookBiteMissed()
+  local cb = CharBook()
+  local o = cb and cb.open
+  if type(o) ~= "table" then return end
+  o.m = (Num(o.m) or 0) + 1
 end
 
 function ns.BookGetaway()
@@ -179,11 +190,17 @@ ns.On("PLAYER_ENTERING_WORLD", function()
   local cb = CharBook()
   if cb and type(cb.open) == "table" and Now() - (Num(cb.open.l) or 0) > GAP then Close(cb) end
 end)
+-- Pole back into the bags: the session ends. (1.4.1, Daniel 09.10.) The chat summary describes
+-- exactly this session (Stats.lua builds the text).
 ns.On("PLAYER_EQUIPMENT_CHANGED", function(_, slot)
   if slot ~= (INVSLOT_MAINHAND or 16) then return end
   if ns.HasPole and not ns.HasPole() then
     local cb = CharBook()
-    if cb and cb.open then Close(cb) if ns.UpdateBook then ns.UpdateBook() end end
+    if cb and cb.open then
+      local entry = Close(cb)
+      if entry and ns.ReportSessionSummary then ns.Call("session summary", ns.ReportSessionSummary, entry) end
+      if ns.UpdateBook then ns.UpdateBook() end
+    end
   end
 end)
 
@@ -200,7 +217,7 @@ function ns.BookEntries()
   local o = cb.open
   if type(o) == "table" and (Num(o.c) or 0) > 0 then
     table.insert(out, 1, { k = "s", running = true, t = o.t, t2 = o.l, z = MainZone(o), c = o.c, f = o.f, j = o.j,
-      g = o.g, a = o.a, v = o.v, ah = (Num(o.ah) or 0) > 0 and o.ah or nil, s0 = o.s0, s1 = o.s1, nw = o.nw })
+      g = o.g, a = o.a, v = o.v, ah = (Num(o.ah) or 0) > 0 and o.ah or nil, s0 = o.s0, s1 = o.s1, nw = o.nw, m = o.m })
   end
   return out
 end
@@ -299,13 +316,20 @@ end
 ---------------------------------------------------------------------------
 -- Window helpers (the family kit's colours; our own frames)
 ---------------------------------------------------------------------------
-local W, H = 940, 620
-local HEADER_H = 34
+-- (1.4.1, Daniel 09.10.) the look of Questdon's quest book 1.3.4: navy to violet,
+-- a gold frame with ornaments in the corners, gold-framed tabs, every line as
+-- a card, the zone you fish in round in a gold ring, statistic cards.
+local W, H = 980, 640
+local HEADER_H = 42
 local SIDE_W = 232
 local HERO_H = 116
-local ROW_H, HEAD_H = 38, 26
-local CARD_H = 64
+local JHERO_H = 188 -- logbook: round map and four statistic cards
+local TILE_H = 70
+local DETAIL_W = 272
+local ROW_H, HEAD_H = 46, 30
+local CARD_H = 72
 local COLS = 3
+local MEDIA = "Interface\\AddOns\\Luredon\\Media\\"
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 local CIRCLE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local TABS = { "log", "atlas", "waters" }
@@ -323,7 +347,44 @@ local zoneQuery = ""
 local showHigher = false
 local Refresh
 
-local function RGB(c) if type(c) == "string" then c = C[c] end return c or C.textPrimary end
+-- The book's own colours, the same as Questdon's quest book (the panel and the
+-- other windows keep Style.COLORS).
+local THEME = {
+  background    = { 0.10, 0.11, 0.22 },
+  backgroundLow = { 0.15, 0.10, 0.25 },
+  header        = { 0.07, 0.08, 0.17 },
+  textPrimary   = { 0.96, 0.92, 0.84 },
+  textSecondary = { 0.80, 0.76, 0.68 },
+  textHint      = { 0.58, 0.57, 0.66 },
+  gold          = { 0.86, 0.71, 0.42 },
+  goldLight     = { 0.97, 0.87, 0.60 },
+  goldDark      = { 0.42, 0.30, 0.14 },
+  accent        = { 0.40, 0.68, 0.98 },
+  good          = { 0.47, 0.84, 0.44 },
+  warning       = { 0.98, 0.80, 0.34 },
+  critical      = { 0.93, 0.40, 0.36 },
+  divider       = { 0.86, 0.71, 0.42, 0.22 },
+  rowHover      = { 1, 1, 1, 0.05 },
+  rowActive     = { 0.86, 0.71, 0.42, 0.16 },
+  barBackground = { 1, 1, 1, 0.09 },
+  card          = { 0.17, 0.21, 0.40 },
+  cardLow       = { 0.11, 0.13, 0.28 },
+  cardEdge      = { 0.86, 0.71, 0.42, 0.30 },
+  violet        = { 0.66, 0.36, 0.95 },
+  cyan          = { 0.30, 0.86, 0.95 },
+}
+for _, c in pairs(THEME) do
+  c.hex = string.format("ff%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+end
+ns.BOOK_THEME = THEME -- (tests)
+
+local function RGB(c) if type(c) == "string" then c = THEME[c] or C[c] end return c or THEME.textPrimary end
+-- Coloured text in the book's colours.
+local function Colorize(text, color)
+  local c = RGB(color)
+  local hex = c.hex or string.format("ff%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+  return "|c" .. hex .. tostring(text or "") .. "|r"
+end
 local function Fill(tex, color, alpha)
   local c = RGB(color)
   if tex.SetColorTexture then tex:SetColorTexture(c[1], c[2], c[3], alpha or c[4] or 1)
@@ -333,6 +394,92 @@ local function Tex(parent, layer, color, alpha, sub)
   local t = parent:CreateTexture(nil, layer or "BACKGROUND", nil, sub)
   if color then Fill(t, color, alpha) end
   return t
+end
+-- A colour gradient on a texture (vertical: c1 at the bottom, c2 at the top); plain fill if the client cannot.
+local function Gradient(tex, orientation, c1, a1, c2, a2)
+  local x, y = RGB(c1), RGB(c2)
+  if tex.SetGradient and CreateColor then
+    if not tex:GetTexture() then Fill(tex, { 1, 1, 1 }, 1) end
+    local ok = pcall(tex.SetGradient, tex, orientation, CreateColor(x[1], x[2], x[3], a1 or 1), CreateColor(y[1], y[2], y[3], a2 or 1))
+    if ok then return end
+  end
+  Fill(tex, c2, a2)
+end
+-- Rounded cards: the client cuts our 64 px texture into nine parts
+-- (SetTextureSliceMargins); an older client gets a plain card with thin edges.
+local SLICE
+local function CanSlice(tex)
+  if SLICE == nil then SLICE = type(tex.SetTextureSliceMargins) == "function" end
+  return SLICE
+end
+local function CardTex(parent, layer, file, sub)
+  local t = parent:CreateTexture(nil, layer, nil, sub)
+  if CanSlice(t) and t:SetTexture(MEDIA .. file) ~= false then
+    if not pcall(t.SetTextureSliceMargins, t, 12, 12, 12, 12) then SLICE = false end
+    if SLICE and t.SetTextureSliceMode then pcall(t.SetTextureSliceMode, t, 0) end
+  end
+  return t
+end
+-- A card behind a line or tile: f.cardFill, f.cardEdge (or four lines), inset from the frame's edges.
+local function Card(f, inset, insetY)
+  inset, insetY = inset or 0, insetY or 0
+  f.cardFill = CardTex(f, "BACKGROUND", "CardFill", 1)
+  f.cardFill:SetPoint("TOPLEFT", f, "TOPLEFT", inset, -insetY)
+  f.cardFill:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -inset, insetY)
+  if SLICE then
+    f.cardEdge = CardTex(f, "BORDER", "CardBorder", 1)
+    f.cardEdge:SetAllPoints(f.cardFill)
+  else
+    f.cardFill:SetTexture(WHITE)
+    f.cardLines = {}
+    local fl = f.cardFill
+    local function Line(a, b, horiz)
+      local t = f:CreateTexture(nil, "BORDER")
+      t:SetTexture(WHITE)
+      t:SetPoint(a, fl, a) t:SetPoint(b, fl, b)
+      if horiz then t:SetHeight(1) else t:SetWidth(1) end
+      f.cardLines[#f.cardLines + 1] = t
+    end
+    Line("TOPLEFT", "TOPRIGHT", true) Line("BOTTOMLEFT", "BOTTOMRIGHT", true)
+    Line("TOPLEFT", "BOTTOMLEFT") Line("TOPRIGHT", "BOTTOMRIGHT")
+  end
+  local function Edge(self, edge, edgeAlpha)
+    local e = RGB(edge or "cardEdge")
+    local ea = edgeAlpha or e[4] or 1
+    if self.cardEdge then self.cardEdge:SetVertexColor(e[1], e[2], e[3], ea) end
+    for _, t in ipairs(self.cardLines or {}) do t:SetVertexColor(e[1], e[2], e[3], ea) end
+  end
+  function f:SetCardLook(fillTop, fillBottom, fillAlpha, edge, edgeAlpha)
+    self._look = { fillTop, fillBottom, fillAlpha, edge, edgeAlpha }
+    Gradient(self.cardFill, "VERTICAL", fillBottom or "cardLow", fillAlpha or 0.92, fillTop or "card", fillAlpha or 0.92)
+    Edge(self, edge, edgeAlpha)
+  end
+  -- mouse over: a brighter gold edge
+  function f:SetCardHover(on)
+    local l = self._look or {}
+    if on then Edge(self, "goldLight", 0.85) else Edge(self, l[4], l[5]) end
+  end
+  f:SetCardLook()
+  return f
+end
+-- Thin edges around a region (icon frames, badges).
+local function Edges(f, region, color, alpha, layer)
+  local out = {}
+  local function Line(p1, p2, horiz)
+    local t = f:CreateTexture(nil, layer or "BORDER")
+    t:SetTexture(WHITE)
+    t:SetPoint(p1, region, p1) t:SetPoint(p2, region, p2)
+    if horiz then t:SetHeight(1) else t:SetWidth(1) end
+    out[#out + 1] = t
+  end
+  Line("TOPLEFT", "TOPRIGHT", true) Line("BOTTOMLEFT", "BOTTOMRIGHT", true)
+  Line("TOPLEFT", "BOTTOMLEFT") Line("TOPRIGHT", "BOTTOMRIGHT")
+  function out:SetColor(col, a)
+    local cc = RGB(col)
+    for _, t in ipairs(self) do t:SetVertexColor(cc[1], cc[2], cc[3], a or cc[4] or 1) end
+  end
+  out:SetColor(color, alpha)
+  return out
 end
 local fontPath
 local function FontPath()
@@ -344,8 +491,8 @@ local function FontPath()
   return fontPath
 end
 local function SetColor(fs, color, alpha) local c = RGB(color) fs:SetTextColor(c[1], c[2], c[3], alpha or 1) end
-local function Text(parent, size, color, justify)
-  local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+local function Text(parent, size, color, justify, layer)
+  local fs = parent:CreateFontString(nil, layer or "OVERLAY", "GameFontHighlightSmall")
   if size and fs.SetFont then pcall(fs.SetFont, fs, FontPath(), size, "") end
   SetColor(fs, color or "textPrimary")
   if justify then fs:SetJustifyH(justify) end
@@ -470,7 +617,9 @@ local function Clickable(f)
   f.hover:Hide()
   if f.RegisterForClicks then f:RegisterForClicks("LeftButtonUp") end
   f:SetScript("OnEnter", function(self)
-    if self.onClick or self.tooltip then self.hover:Show() end
+    if self.onClick or self.tooltip then
+      if self.SetCardHover and self.cardFill:IsShown() then self:SetCardHover(true) else self.hover:Show() end
+    end
     if self.tooltip then
       local ok, title, lines, hint = pcall(self.tooltip, self)
       if ok and title then Style.Tooltip(self, title, lines, hint, "ANCHOR_RIGHT") end
@@ -478,7 +627,11 @@ local function Clickable(f)
       ShowCut(self)
     end
   end)
-  f:SetScript("OnLeave", function(self) self.hover:Hide() Style.HideTooltip(self) end)
+  f:SetScript("OnLeave", function(self)
+    self.hover:Hide()
+    if self.SetCardHover then self:SetCardHover(false) end
+    Style.HideTooltip(self)
+  end)
   f:SetScript("OnClick", function(self, button) if self.onClick then ns.Call("book click", self.onClick, self, button) end end)
   PassRight(f)
 end
@@ -564,19 +717,19 @@ local HeadKind = {
   create = function(list)
     local f = CreateFrame("Button", nil, list)
     Clickable(f)
-    f.text = Text(f, 11, "textSecondary", "LEFT")
-    f.text:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 6)
+    f.text = Text(f, 12, "gold", "LEFT")
+    f.text:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 7)
     f.count = Text(f, 11, "textHint", "LEFT")
     f.count:SetPoint("LEFT", f.text, "RIGHT", 6, 0)
     f.right = Text(f, 11, "textHint", "RIGHT")
-    f.right:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 6)
+    f.right:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 7)
     f.line = Tex(f, "ARTWORK", "divider")
     f.line:SetHeight(1)
     return f
   end,
   render = function(f, it)
     f.text:SetText(it.text or "")
-    SetColor(f.text, it.color or "textSecondary")
+    SetColor(f.text, (it.color == nil or it.color == "textPrimary" or it.color == "textSecondary") and "gold" or it.color)
     f.count:SetText(it.count and tostring(it.count) or "")
     f.right:SetText(it.right or "")
     local rw = RowW(f)
@@ -603,56 +756,62 @@ local EmptyKind = {
   render = function(f, it) f.text:SetText(it.text or "") SetColor(f.text, it.color or "textHint") end,
 }
 
--- Logbook line: time, a dot on the time line, title and details, value on the right.
-local BAND = { r = "accent", m = "warning", x = "accent" }
+-- Logbook line (1.4.1: a card as in Questdon's journal): time on the left, a
+-- round mark in a gold ring (the fish for a rare catch), title and details,
+-- value on the right. Skill milestones as a golden card, records and rare
+-- catches with a coloured edge.
+local BAND = { r = "accent", m = "warning", x = "goldLight" }
 local EntryKind = {
   create = function(list)
     local f = CreateFrame("Button", nil, list)
-    f.band = Tex(f, "BACKGROUND", "warning", 0.10)
-    f.band:SetPoint("TOPLEFT", f, "TOPLEFT", 66, -3)
-    f.band:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 3)
-    f.stripe = Tex(f, "ARTWORK", "warning")
-    f.stripe:SetPoint("TOPLEFT", f.band, "TOPLEFT", 0, 0)
-    f.stripe:SetPoint("BOTTOMLEFT", f.band, "BOTTOMLEFT", 0, 0)
-    f.stripe:SetWidth(2)
+    Card(f, 4, 3)
     Clickable(f)
     f.time = Text(f, 11, "textHint", "LEFT")
-    f.time:SetPoint("LEFT", f, "LEFT", 10, 0)
-    f.line = Tex(f, "BORDER", "textPrimary", 0.10)
-    f.line:SetWidth(1)
-    f.line:SetPoint("TOP", f, "TOPLEFT", 56, 0)
-    f.line:SetPoint("BOTTOM", f, "BOTTOMLEFT", 56, 0)
-    f.disc = Icon(f, 16, CIRCLE, "ARTWORK")
-    f.disc:SetPoint("CENTER", f, "LEFT", 56, 0)
-    f.disc:SetVertexColor(C.background[1], C.background[2], C.background[3], 1)
-    f.dot = Icon(f, 10, CIRCLE, "OVERLAY")
+    f.time:SetPoint("LEFT", f, "LEFT", 16, 0)
+    f.disc = Icon(f, 24, CIRCLE, "ARTWORK")
+    f.disc:SetPoint("CENTER", f, "LEFT", 72, 0)
+    local d = THEME.cardLow
+    f.disc:SetVertexColor(d[1] * 0.7, d[2] * 0.7, d[3] * 0.7, 1)
+    f.ring = Icon(f, 30, MEDIA .. "BookRing", "ARTWORK")
+    f.ring:SetPoint("CENTER", f.disc, "CENTER", 0, 0)
+    f.dot = Icon(f, 9, CIRCLE, "OVERLAY")
     f.dot:SetPoint("CENTER", f.disc, "CENTER", 0, 0)
-    f.icon = Icon(f, 18, nil, "OVERLAY")
-    f.title = Text(f, 13, "textPrimary", "LEFT")
+    f.icon = Icon(f, 20, nil, "OVERLAY")
+    f.icon:SetPoint("CENTER", f.disc, "CENTER", 0, 0)
+    if f.icon.SetTexCoord then f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+    if f.icon.AddMaskTexture and f.CreateMaskTexture then
+      local ok, mask = pcall(f.CreateMaskTexture, f)
+      if ok and mask then
+        pcall(mask.SetTexture, mask, CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(f.icon)
+        pcall(f.icon.AddMaskTexture, f.icon, mask)
+      end
+    end
+    f.title = Text(f, 14, "textPrimary", "LEFT")
     f.sub = Text(f, 11, "textHint", "LEFT")
-    f.r1 = Text(f, 12, "warning", "RIGHT")
-    f.r1:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -5)
-    f.r2 = Text(f, 11, "textHint", "RIGHT")
-    f.r2:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 5)
+    f.r1 = Text(f, 14, "warning", "RIGHT")
+    f.r1:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -9)
+    f.r2 = Text(f, 11, "textSecondary", "RIGHT")
+    f.r2:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -18, 9)
     return f
   end,
   render = function(f, it)
     local e = it.e
     f.time:SetText(e.t and Clock(e.t) or "")
     local band = BAND[e.k]
-    if band then
-      Fill(f.band, band, 0.10) Fill(f.stripe, band) f.band:Show() f.stripe:Show()
-    else
-      f.band:Hide() f.stripe:Hide()
-    end
+    if e.k == "m" then f:SetCardLook("goldDark", "cardLow", 0.92, "gold", 0.75)
+    elseif band then f:SetCardLook("card", "cardLow", 0.92, band, 0.6)
+    else f:SetCardLook() end
     local dc = RGB(band or "accent")
     f.dot:SetVertexColor(dc[1], dc[2], dc[3], 1)
+    f.dot:Show()
     f.icon:Hide()
     local title, sub, r1, r2
     if e.k == "s" then
       title = (e.running and L["Fishing now in %s"] or L["Session in %s"]):format(ZoneName(e.z))
       local parts = { Span(Num(e.t2) and Num(e.t) and (e.t2 - e.t) or e.a), L["%d fish"]:format(Num(e.f) or 0) }
       if (Num(e.g) or 0) > 0 then parts[#parts + 1] = L["%d got away"]:format(e.g) end
+      if (Num(e.m) or 0) > 0 then parts[#parts + 1] = L["%d bites missed"]:format(e.m) end -- (1.4.1)
       local rate = Rate(e.f, e.a)
       if rate then parts[#parts + 1] = L["%d per hour"]:format(rate) end
       local s0, s1 = Num(e.s0) or 0, Num(e.s1) or 0
@@ -666,30 +825,33 @@ local EntryKind = {
       title = L["Rare catch: %s"]:format(name)
       sub = ZoneName(e.z)
       f.icon:SetTexture(ItemIcon(e.id))
-      f.icon:ClearAllPoints()
-      f.icon:SetPoint("RIGHT", f, "RIGHT", -12, 0)
       f.icon:Show()
+      f.dot:Hide()
     elseif e.k == "m" then
       local ms = ns.MILESTONES and ns.MILESTONES[e.rank]
-      title = Style.Colorize(L["Fishing skill %d: next rank needed"]:format(Num(e.rank) or 0), "warning")
+      title = Colorize(L["Fishing skill %d: next rank needed"]:format(Num(e.rank) or 0), "warning")
       sub = ms and L[ms.text] or ""
     elseif e.k == "x" then
-      title = Style.Colorize(L["New record: %s fish per hour"]:format(ns.Decimal and ns.Decimal(e.v, 1) or tostring(e.v)), "accent")
+      title = Colorize(L["New record: %s fish per hour"]:format(ns.Decimal and ns.Decimal(e.v, 1) or tostring(e.v)), "accent")
       sub = L["old best %s, %s in %s"]:format(ns.Decimal and ns.Decimal(e.old, 1) or tostring(e.old), ShortDate(e.ot), ZoneName(e.oz))
     end
     f.title:SetText(title or "")
     f.sub:SetText(sub or "")
     f.r1:SetText(r1 or "")
     f.r2:SetText(r2 or "")
-    Fit(f.r1, 110, f) Fit(f.r2, 110, f)
+    f.r1:ClearAllPoints()
+    if not r2 then f.r1:SetPoint("RIGHT", f, "RIGHT", -18, 0) else f.r1:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -9) end
+    Fit(f.r1, 120, f) Fit(f.r2, 120, f)
     f.title:ClearAllPoints()
     f.sub:ClearAllPoints()
-    local left = band and 76 or 72
-    Fit(f.title, RowW(f) - left - 120, f) Fit(f.sub, RowW(f) - left - 120, f)
-    f.title:SetPoint("TOPLEFT", f, "TOPLEFT", left, -5)
-    f.title:SetPoint("TOPRIGHT", f, "TOPRIGHT", -120, -5)
-    f.sub:SetPoint("TOPLEFT", f, "TOPLEFT", left, -21)
-    f.sub:SetPoint("TOPRIGHT", f, "TOPRIGHT", -120, -21)
+    local left, rightW = 96, (r1 or r2) and 136 or 18
+    Fit(f.title, RowW(f) - left - rightW, f) Fit(f.sub, RowW(f) - left - rightW, f)
+    local h = Num(f:GetHeight()) or it.h or ROW_H
+    local top = math.floor((h - 32) / 2)
+    f.title:SetPoint("TOPLEFT", f, "TOPLEFT", left, -top - 1)
+    f.title:SetPoint("TOPRIGHT", f, "TOPRIGHT", -rightW, -top - 1)
+    f.sub:SetPoint("TOPLEFT", f, "TOPLEFT", left, -top - 18)
+    f.sub:SetPoint("TOPRIGHT", f, "TOPRIGHT", -rightW, -top - 18)
     f.onClick = e.z and function() if ns.OpenBook then ns.OpenBook("waters", e.z) end end or nil
     f.tooltip = function()
       local lines = {}
@@ -700,6 +862,7 @@ local EntryKind = {
         lines[#lines + 1] = { L["Fish"], tostring(Num(e.f) or 0) }
         if (Num(e.j) or 0) > 0 then lines[#lines + 1] = { L["Junk"], tostring(e.j) } end
         lines[#lines + 1] = { L["Got away"], tostring(Num(e.g) or 0) }
+        if (Num(e.m) or 0) > 0 then lines[#lines + 1] = { L["Bites missed"], tostring(e.m) } end -- (1.4.1)
         lines[#lines + 1] = { L["Fishing time"], Span(e.a) }
         if e.v then lines[#lines + 1] = { L["Value"], Coins(e.v) or "0" } end
         if e.ah then lines[#lines + 1] = { L["Auction value"], Coins(e.ah) or "0" } end
@@ -720,25 +883,24 @@ local EntryKind = {
 -- A row of up to four kind cards (fish atlas).
 local function CardCreate(parent)
   local c = CreateFrame("Button", nil, parent)
-  c.bg = Tex(c, "BACKGROUND", "textPrimary", 0.035)
-  c.bg:SetAllPoints(c)
-  c.sel = Tex(c, "BORDER", "accent", 0.12)
-  c.sel:SetAllPoints(c)
-  Border(c, "textPrimary", 0.07)
+  Card(c, 0, 0)
+  c.sel = Tex(c, "BACKGROUND", "rowActive", nil, 2)
+  c.sel:SetAllPoints(c.cardFill)
   Clickable(c)
-  c.frame = Tex(c, "ARTWORK", "textPrimary", 0.15)
-  c.frame:SetSize(42, 42)
-  c.frame:SetPoint("LEFT", c, "LEFT", 8, 0)
+  c.frame = Tex(c, "ARTWORK", "cardLow", 0.95)
+  c.frame:SetSize(44, 44)
+  c.frame:SetPoint("LEFT", c, "LEFT", 10, 0)
+  c.frameEdge = Edges(c, c.frame, "gold", 0.55, "ARTWORK")
   c.icon = Icon(c, 40, nil, "OVERLAY")
   c.icon:SetPoint("CENTER", c.frame, "CENTER", 0, 0)
-  c.name = Text(c, 12, "textPrimary", "LEFT")
-  c.name:SetPoint("TOPLEFT", c.frame, "TOPRIGHT", 8, -3)
-  c.name:SetPoint("RIGHT", c, "RIGHT", -6, 0)
-  c.sub = Text(c, 10, "textHint", "LEFT")
-  c.sub:SetPoint("TOPLEFT", c.name, "BOTTOMLEFT", 0, -4)
-  c.sub:SetPoint("RIGHT", c, "RIGHT", -6, 0)
+  c.name = Text(c, 13, "textPrimary", "LEFT")
+  c.name:SetPoint("TOPLEFT", c.frame, "TOPRIGHT", 10, -4)
+  c.name:SetPoint("RIGHT", c, "RIGHT", -8, 0)
+  c.sub = Text(c, 11, "textHint", "LEFT")
+  c.sub:SetPoint("TOPLEFT", c.name, "BOTTOMLEFT", 0, -5)
+  c.sub:SetPoint("RIGHT", c, "RIGHT", -8, 0)
   c.new = Text(c, 10, "warning", "RIGHT")
-  c.new:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -6, 4)
+  c.new:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -10, 6)
   return c
 end
 local CardsKind = {
@@ -774,8 +936,8 @@ local CardsKind = {
           SetColor(c.new, k.classic and "textHint" or "warning")
         end
         Fit(c.new, 60, c)
-        Fit(c.name, each - 64, c)
-        local subRoom = each - 64 - (caught and 0 or TextWidth(c.new) + 4)
+        Fit(c.name, each - 72, c)
+        local subRoom = each - 72 - (caught and 0 or TextWidth(c.new) + 4)
         if not Fit(c.sub, subRoom, c) and not caught and k.minSkill then
           -- (i18n) too long: the zone first, the skill is in the tooltip and the details
           Style.TextCuts[c.sub:GetText() or ""] = nil
@@ -783,7 +945,13 @@ local CardsKind = {
           c.sub:SetText(z and (ZoneName(z.map) .. (z.share > 0 and ("  " .. Style.Percent(z.share)) or "")) or L["unknown"])
           Fit(c.sub, subRoom, c)
         end
-        if selKind == k.id then c.sel:Show() else c.sel:Hide() end
+        if selKind == k.id then
+          c.sel:Show() c:SetCardLook("card", "cardLow", 0.98, "gold", 0.9)
+        else
+          c.sel:Hide()
+          if caught then c:SetCardLook() else c:SetCardLook("cardLow", "cardLow", 0.7, "cardEdge", 0.18) end
+        end
+        c.frameEdge:SetColor(caught and "gold" or "textHint", caught and 0.6 or 0.3)
         c.onClick = function() selKind = k.id Refresh() end
         c.tooltip = function()
           local lines = {}
@@ -807,19 +975,20 @@ local ZoneKind = {
   create = function(list)
     local f = CreateFrame("Button", nil, list)
     Clickable(f)
-    f.sel = Tex(f, "BACKGROUND", "accent", 0.14, 2)
+    f.sel = Tex(f, "BACKGROUND", "rowActive", nil, 2)
     f.sel:SetAllPoints(f)
-    f.bar = Tex(f, "ARTWORK", "accent")
+    f.bar = Tex(f, "ARTWORK", "gold")
     f.bar:SetPoint("TOPLEFT") f.bar:SetPoint("BOTTOMLEFT") f.bar:SetWidth(2)
     f.here = Icon(f, 7, CIRCLE, "OVERLAY")
-    f.here:SetVertexColor(C.accent[1], C.accent[2], C.accent[3], 1)
+    f.here:SetVertexColor(THEME.goldLight[1], THEME.goldLight[2], THEME.goldLight[3], 1)
     f.here:SetPoint("LEFT", f, "LEFT", 12, 0)
     f.name = Text(f, 12, "textSecondary", "LEFT")
     f.badgeText = Text(f, 11, "textPrimary", "CENTER")
     f.badgeText:SetPoint("RIGHT", f, "RIGHT", -16, 0)
     f.badge = Tex(f, "ARTWORK", "good", 0.15)
-    f.badge:SetPoint("TOPLEFT", f.badgeText, "TOPLEFT", -6, 3)
-    f.badge:SetPoint("BOTTOMRIGHT", f.badgeText, "BOTTOMRIGHT", 6, -3)
+    f.badge:SetPoint("TOPLEFT", f.badgeText, "TOPLEFT", -7, 4)
+    f.badge:SetPoint("BOTTOMRIGHT", f.badgeText, "BOTTOMRIGHT", 7, -4)
+    f.badgeEdge = Edges(f, f.badge, "good", 0.6, "ARTWORK")
     return f
   end,
   render = function(f, it)
@@ -834,7 +1003,8 @@ local ZoneKind = {
     f.badgeText:SetText(it.need and tostring(it.need) or "?")
     Fit(f.name, RowW(f) - (it.here and 24 or 12) - 16 - 12 - TextWidth(f.badgeText) - 6, f)
     SetColor(f.badgeText, color)
-    Fill(f.badge, color, it.need and 0.16 or 0.08)
+    Fill(f.badge, color, it.need and 0.22 or 0.08)
+    f.badgeEdge:SetColor(color, it.need and 0.7 or 0.3)
     f.onClick = function() selZone = it.map zoneSeg = "fish" Refresh(true) end
     f.tooltip = function()
       local lines = { { L["Skill needed"], it.need and tostring(it.need) or L["unknown"] } }
@@ -849,10 +1019,12 @@ local ZoneKind = {
 local FishKind = {
   create = function(list)
     local f = CreateFrame("Button", nil, list)
+    Card(f, 4, 3)
     Clickable(f)
-    f.frame = Tex(f, "ARTWORK", "textPrimary", 0.15)
-    f.frame:SetSize(30, 30)
-    f.frame:SetPoint("LEFT", f, "LEFT", 12, 0)
+    f.frame = Tex(f, "ARTWORK", "cardLow", 0.95)
+    f.frame:SetSize(32, 32)
+    f.frame:SetPoint("LEFT", f, "LEFT", 14, 0)
+    f.frameEdge = Edges(f, f.frame, "gold", 0.55, "ARTWORK")
     f.icon = Icon(f, 28, nil, "OVERLAY")
     f.icon:SetPoint("CENTER", f.frame, "CENTER", 0, 0)
     f.name = Text(f, 13, "textPrimary", "LEFT")
@@ -860,27 +1032,30 @@ local FishKind = {
     f.name:SetPoint("RIGHT", f, "RIGHT", -300, 0)
     f.t1 = Tex(f, "ARTWORK", "textPrimary", 0.07)
     f.t1:SetSize(200, 5)
-    f.t1:SetPoint("RIGHT", f, "RIGHT", -84, 5)
+    f.t1:SetPoint("RIGHT", f, "RIGHT", -88, 5)
     f.b1 = Tex(f, "OVERLAY", "textSecondary")
     f.b1:SetPoint("TOPLEFT", f.t1, "TOPLEFT") f.b1:SetPoint("BOTTOMLEFT", f.t1, "BOTTOMLEFT")
     f.t2 = Tex(f, "ARTWORK", "textPrimary", 0.07)
     f.t2:SetSize(200, 5)
-    f.t2:SetPoint("RIGHT", f, "RIGHT", -84, -5)
+    f.t2:SetPoint("RIGHT", f, "RIGHT", -88, -5)
     f.b2 = Tex(f, "OVERLAY", "good")
     f.b2:SetPoint("TOPLEFT", f.t2, "TOPLEFT") f.b2:SetPoint("BOTTOMLEFT", f.t2, "BOTTOMLEFT")
     f.pct = Text(f, 11, "textHint", "RIGHT")
-    f.pct:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -6)
+    f.pct:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -9)
     f.cnt = Text(f, 11, "good", "RIGHT")
-    f.cnt:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 6)
+    f.cnt:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -18, 9)
     return f
   end,
   render = function(f, it)
     local e = it.e
     f.icon:SetTexture(ItemIcon(e.id))
-    f.name:SetText(QName(e.id) .. (e.kind == "c" and ("  " .. Style.Colorize(L["(container)"], "textHint")) or ""))
+    f.name:SetText(QName(e.id) .. (e.kind == "c" and ("  " .. Colorize(L["(container)"], "textHint")) or ""))
     if e.share and e.share > 0 then f.b1:SetWidth(math.max(1, 200 * math.min(1, e.share))) f.b1:Show() else f.b1:Hide() end
     if it.own and it.own > 0 then f.b2:SetWidth(math.max(1, 200 * math.min(1, it.own))) f.b2:Show() else f.b2:Hide() end
-    Fit(f.name, RowW(f) - 12 - 30 - 10 - 300, f)
+    Fit(f.name, RowW(f) - 14 - 32 - 10 - 300, f)
+    local caughtHere = (e.caught or 0) > 0
+    if caughtHere then f:SetCardLook() else f:SetCardLook("cardLow", "cardLow", 0.7, "cardEdge", 0.18) end
+    f.frameEdge:SetColor(caughtHere and "gold" or "textHint", caughtHere and 0.6 or 0.3)
     f.pct:SetText(e.share and Style.Percent(e.share) or "-")
     if (e.caught or 0) > 0 then f.cnt:SetText(tostring(e.caught)) SetColor(f.cnt, "good")
     else f.cnt:SetText(L["new"]) SetColor(f.cnt, "warning") end
@@ -888,7 +1063,10 @@ local FishKind = {
     f.onClick = function() selKind = e.id if ns.OpenBook then ns.OpenBook("atlas") end end
     f.tooltip = function()
       local lines = {}
-      if e.share then lines[#lines + 1] = { e.classic and L["Share (Wowhead Classic)"] or L["Share (Wowhead)"], Style.Percent(e.share) } end
+      if e.share then
+        local label = e.classic and L["Share (Wowhead Classic)"] or e.fromOwn and L["Share (Luredon's own catches)"] or L["Share (Wowhead)"]
+        lines[#lines + 1] = { label, Style.Percent(e.share) }
+      end
       if it.own then lines[#lines + 1] = { L["Your share here"], Style.Percent(it.own) } end
       lines[#lines + 1] = { L["Caught here"], (e.caught or 0) > 0 and tostring(e.caught) or L["not yet"] }
       return Plain(QName(e.id)), lines, L["Click: in the fish atlas."]
@@ -1026,13 +1204,15 @@ end
 
 local function ZoneFishItems(m)
   local items = {}
-  local list, kinds, caughtKinds, classic = nil, 0, 0, false
-  if ns.ZoneFishList then list, kinds, caughtKinds, classic = ns.ZoneFishList(m) end
+  local list, kinds, caughtKinds, classic, ownList = nil, 0, 0, false, nil
+  if ns.ZoneFishList then list, kinds, caughtKinds, classic, ownList = ns.ZoneFishList(m) end
   local z = ns.db.zones and ns.db.zones[m]
   local ownTotal = 0
   for _, n in pairs(type(z) == "table" and type(z.fish) == "table" and z.fish or {}) do ownTotal = ownTotal + (Num(n) or 0) end
   if classic then
     items[#items + 1] = { kind = "empty", h = 26, text = L["Fish from Wowhead's Classic data, not confirmed for Forever yet."], color = "warning" }
+  elseif ownList then -- (1.4.1) Zephras Isle
+    items[#items + 1] = { kind = "empty", h = 26, text = L["Fish from Luredon's own catches, Wowhead has no list for this zone yet."], color = "textHint" }
   end
   if not list then
     items[#items + 1] = { kind = "empty", h = 60, text = L["No fish list for this zone yet."] }
@@ -1108,18 +1288,18 @@ local function Layout(chips, avail)
 end
 local function Tile(parent)
   local t = CreateFrame("Frame", nil, parent)
-  Tex(t, "BACKGROUND", "textPrimary", 0.04):SetAllPoints(t)
-  Border(t, "textPrimary", 0.06)
-  t.label = Text(t, 10, "textHint", "LEFT")
-  t.label:SetPoint("TOPLEFT", t, "TOPLEFT", 10, -8)
-  t.value = Text(t, 18, "textPrimary", "LEFT")
-  t.value:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 10, 9)
+  Card(t, 0, 0)
+  t:SetCardLook("card", "cardLow", 0.92, "gold", 0.45)
+  t.label = Text(t, 11, "textSecondary", "LEFT")
+  t.label:SetPoint("TOPLEFT", t, "TOPLEFT", 12, -9)
+  t.value = Text(t, 22, "textPrimary", "LEFT")
+  t.value:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 12, 16)
   t.small = Text(t, 11, "textHint", "LEFT")
-  t.small:SetPoint("BOTTOMLEFT", t.value, "BOTTOMRIGHT", 6, 1)
+  t.small:SetPoint("BOTTOMLEFT", t.value, "BOTTOMRIGHT", 8, 2)
   t.track = Tex(t, "ARTWORK", "barBackground")
-  t.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 10, 5)
-  t.track:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", -10, 5)
-  t.track:SetHeight(3)
+  t.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 12, 8)
+  t.track:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", -12, 8)
+  t.track:SetHeight(6)
   t.fill = Tex(t, "OVERLAY", "accent")
   t.fill:SetPoint("TOPLEFT", t.track, "TOPLEFT") t.fill:SetPoint("BOTTOMLEFT", t.track, "BOTTOMLEFT")
   t.track:Hide() t.fill:Hide()
@@ -1127,57 +1307,77 @@ local function Tile(parent)
   -- (i18n) after the texts are set: label, value and small text fit the tile
   function t:FitTexts()
     local w = self._w or 200
-    Fit(self.label, w - 20, self)
-    Fit(self.value, w - 20, self)
-    Fit(self.small, w - 26 - TextWidth(self.value), self)
+    Fit(self.label, w - 24, self)
+    Fit(self.value, w - 24, self)
+    Fit(self.small, w - 32 - TextWidth(self.value), self)
   end
+  -- frac 0..1; color: a plain colour, else the family's violet to cyan
   function t:SetBar(frac, color)
     if not frac then self.track:Hide() self.fill:Hide() return end
-    local w = math.max(1, (Num(self:GetWidth()) or 200) - 20)
+    local w = math.max(1, (Num(self:GetWidth()) or self._w or 200) - 24)
     self.track:Show()
-    if frac > 0 then self.fill:SetWidth(w * math.min(1, frac)) Fill(self.fill, color or "accent") self.fill:Show() else self.fill:Hide() end
+    if frac > 0 then
+      self.fill:SetWidth(w * math.min(1, frac))
+      if color then Fill(self.fill, color) else Gradient(self.fill, "HORIZONTAL", "violet", 1, "cyan", 1) end
+      self.fill:Show()
+    else self.fill:Hide() end
   end
   return t
 end
-local function Tiles(page, n, top, widths)
+-- n tiles in a row (widths: parts of the row) or, with grid, two by two
+-- right of the round map (logbook).
+local function Tiles(page, n, top, widths, left)
   local tiles = {}
   for i = 1, n do tiles[i] = Tile(page) end
-  -- widths before the first layout (the same sums as below)
-  local units0 = 0
-  for i = 1, n do units0 = units0 + (widths and widths[i] or 1) end
-  local unit0 = (W - 2 - 28 - (n - 1) * 8) / units0
-  for i, t in ipairs(tiles) do t._w = unit0 * (widths and widths[i] or 1) end
-  page:SetScript("OnSizeChanged", function(self, w)
-    w = (Num(w) or W) - 28
+  left = left or 0
+  local function Place(w)
+    if left > 0 then
+      local each = (w - left - 14 - 10) / 2
+      local th = (JHERO_H - 12 - 10) / 2
+      for i, t in ipairs(tiles) do
+        local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", page, "TOPLEFT", left + col * (each + 10), -top - row * (th + 10))
+        t:SetSize(each, th)
+        t._w = each
+      end
+      return
+    end
     local units = 0
     for i = 1, n do units = units + (widths and widths[i] or 1) end
-    local unit = (w - (n - 1) * 8) / units
+    local unit = (w - 28 - (n - 1) * 10) / units
     local x = 14
     for i, t in ipairs(tiles) do
       local tw = unit * (widths and widths[i] or 1)
       t:ClearAllPoints()
-      t:SetPoint("TOPLEFT", self, "TOPLEFT", x, -top)
-      t:SetSize(tw, 58)
+      t:SetPoint("TOPLEFT", page, "TOPLEFT", x, -top)
+      t:SetSize(tw, TILE_H)
       t._w = tw
-      x = x + tw + 8
+      x = x + tw + 10
     end
-  end)
+  end
+  Place(W - 2) -- widths before the first layout
+  page:SetScript("OnSizeChanged", function(_, w) Place(Num(w) or (W - 2)) end)
   return tiles
 end
 
 local function EditBox(parent, placeholderText, onChange, budget)
   local box = CreateFrame("Frame", nil, parent)
   Tex(box, "BACKGROUND", "textPrimary", 0.06):SetAllPoints(box)
+  Border(box, "gold", 0.30)
+  box.icon = Icon(box, 12, "Interface\\Common\\UI-Searchbox-Icon", "ARTWORK")
+  box.icon:SetPoint("LEFT", box, "LEFT", 8, 0)
+  box.icon:SetVertexColor(THEME.textHint[1], THEME.textHint[2], THEME.textHint[3], 1)
   local edit = CreateFrame("EditBox", nil, box)
   edit:SetAutoFocus(false)
   edit:SetMaxLetters(40)
   edit:SetFontObject(ChatFontNormal or "ChatFontNormal")
-  edit:SetPoint("TOPLEFT", box, "TOPLEFT", 8, 0)
+  edit:SetPoint("TOPLEFT", box, "TOPLEFT", 26, 0)
   edit:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -8, 0)
-  local tc = C.textPrimary
+  local tc = THEME.textPrimary
   if edit.SetTextColor then edit:SetTextColor(tc[1], tc[2], tc[3]) end
   box.placeholder = Text(box, 12, "textHint", "LEFT")
-  box.placeholder:SetPoint("LEFT", box, "LEFT", 9, 0)
+  box.placeholder:SetPoint("LEFT", box, "LEFT", 26, 0)
   box.placeholder:SetText(placeholderText)
   if budget then Fit(box.placeholder, budget, box) CutTip(box) end
   edit:SetScript("OnTextChanged", function(self)
@@ -1191,31 +1391,65 @@ local function EditBox(parent, placeholderText, onChange, budget)
   return box
 end
 
--- The map of the zone as the picture (as in Questdon's quest book, with the explored parts).
-local function UpdateHeroArt(m)
-  local hero = P.hero
+-- Folder of the zone map in Interface\\WorldMap (when the client gives no map art layers)
+local MAPFILE = {
+  [1438] = "Teldrassil", [1411] = "Durotar", [1412] = "Mulgore", [1439] = "Darkshore", [1413] = "Barrens",
+  [1442] = "StonetalonMountains", [1440] = "Ashenvale", [1441] = "ThousandNeedles", [1443] = "Desolace",
+  [1445] = "Dustwallow", [1444] = "Feralas", [1446] = "Tanaris", [1447] = "Aszhara", [1448] = "Felwood",
+  [1449] = "UngoroCrater", [1452] = "Winterspring", [1450] = "Moonglade", [1451] = "Silithus",
+  [1457] = "Darnassis", [1454] = "Ogrimmar", [1456] = "ThunderBluff",
+  [1429] = "Elwynn", [1426] = "DunMorogh", [1420] = "Tirisfal", [1436] = "Westfall", [1432] = "LochModan",
+  [1421] = "Silverpine", [1433] = "Redridge", [1431] = "Duskwood", [1437] = "Wetlands", [1424] = "Hilsbrad",
+  [1416] = "Alterac", [1417] = "Arathi", [1434] = "Stranglethorn", [1418] = "Badlands", [1435] = "SwampOfSorrows",
+  [1425] = "Hinterlands", [1427] = "SearingGorge", [1419] = "BlastedLands", [1428] = "BurningSteppes",
+  [1422] = "WesternPlaguelands", [1423] = "EasternPlaguelands", [1430] = "DeadwindPass",
+  [1453] = "Stormwind", [1455] = "Ironforge", [1458] = "Undercity",
+}
+local function ArtFromClient(m)
+  local okL, layers = false, nil
+  if C_Map and C_Map.GetMapArtLayers then okL, layers = pcall(C_Map.GetMapArtLayers, m) end
+  local okT, textures = false, nil
+  if C_Map and C_Map.GetMapArtLayerTextures then okT, textures = pcall(C_Map.GetMapArtLayerTextures, m, 1) end
+  local layer = okL and type(layers) == "table" and layers[1]
+  if type(layer) ~= "table" or not okT or type(textures) ~= "table" or #textures == 0 then return nil end
+  local tw, th, lw, lh = Num(layer.tileWidth), Num(layer.tileHeight), Num(layer.layerWidth), Num(layer.layerHeight)
+  if not (tw and th and lw and lh) or tw <= 0 or lw <= 0 then return nil end
+  return textures, tw, th, lw, lh
+end
+-- The classic world map: 12 tiles of 256 pixels, 4 by 3, of which 1002 by 668 count.
+local function ArtFromFiles(m)
+  local name = m and MAPFILE[m]
+  if not name then return nil end
+  local textures = {}
+  for i = 1, 12 do textures[i] = "Interface\\WorldMap\\" .. name .. "\\" .. name .. i end
+  return textures, 256, 256, 1002, 668
+end
+
+-- The map of a zone into a frame, with the explored parts (as in Questdon's
+-- quest book): the banner of Waters (middle stripe) and the round map of the
+-- logbook (a circle mask on every piece).
+local function DrawMapArt(hero, m, width, HEIGHT, mask)
   for _, t in ipairs(hero.tiles) do t:Hide() end
   hero.artMap = m
-  local layers = C_Map and C_Map.GetMapArtLayers and select(2, pcall(C_Map.GetMapArtLayers, m))
-  local ok2, textures = false, nil
-  if C_Map and C_Map.GetMapArtLayerTextures then ok2, textures = pcall(C_Map.GetMapArtLayerTextures, m, 1) end
-  local layer = type(layers) == "table" and layers[1]
-  if not ok2 or type(layer) ~= "table" or type(textures) ~= "table" or #textures == 0 then hero.artDrawn = 0 return false end
-  local tw, th, lw, lh = Num(layer.tileWidth), Num(layer.tileHeight), Num(layer.layerWidth), Num(layer.layerHeight)
-  if not (tw and th and lw and lh) or tw <= 0 or lw <= 0 then hero.artDrawn = 0 return false end
-  local width = Num(hero:GetWidth()) or 0
-  if width <= 1 then width = W - SIDE_W end
-  local scale = width / lw
-  local shift = ((lh * scale) - HERO_H) / 2
+  local textures, tw, th, lw, lh = ArtFromClient(m)
+  if not textures then textures, tw, th, lw, lh = ArtFromFiles(m) end
+  if not textures then hero.artDrawn = 0 return false end
+  local scale = math.max(width / lw, HEIGHT / lh)
+  local shift = ((lh * scale) - HEIGHT) / 2
+  local shiftX = ((lw * scale) - width) / 2
   local drawn = 0
   local function Piece(file, x, y, w, h, u, v, sub)
-    local X, Y, Wd, Ht = x * scale, y * scale - shift, w * scale, h * scale
-    local ya, yb = math.max(0, Y), math.min(HERO_H, Y + Ht)
+    local X, Y, Wd, Ht = x * scale - shiftX, y * scale - shift, w * scale, h * scale
+    local ya, yb = math.max(0, Y), math.min(HEIGHT, Y + Ht)
     local xa, xb = math.max(0, X), math.min(width, X + Wd)
     if yb <= ya or xb <= xa then return end
     drawn = drawn + 1
     local t = hero.tiles[drawn]
-    if not t then t = hero:CreateTexture(nil, "BACKGROUND", nil, 2) hero.tiles[drawn] = t end
+    if not t then
+      t = hero:CreateTexture(nil, "BACKGROUND", nil, 2)
+      hero.tiles[drawn] = t
+      if mask and t.AddMaskTexture then pcall(t.AddMaskTexture, t, mask) end
+    end
     if t.SetDrawLayer then t:SetDrawLayer("BACKGROUND", sub or 2) end
     t:SetTexture(file)
     t:SetTexCoord(u * (xa - X) / Wd, u * (xb - X) / Wd, v * (ya - Y) / Ht, v * (yb - Y) / Ht)
@@ -1256,49 +1490,104 @@ local function UpdateHeroArt(m)
   hero.artDrawn = drawn
   return drawn > 0
 end
+local function UpdateHeroArt(m)
+  local width = Num(P.hero:GetWidth()) or 0
+  if width <= 1 then width = W - 2 - SIDE_W end
+  return DrawMapArt(P.hero, m, width, HERO_H)
+end
+-- The logbook's round map: the zone you are in.
+local function UpdateLogMap()
+  local jm = P.lmap
+  if not jm then return end
+  local m = HereZone()
+  jm.m = m
+  jm.name:SetText(m and ZoneName(m) or "")
+  Fit(jm.name, JHERO_H - 60, jm)
+  if m ~= jm.artMap then
+    local d = JHERO_H - 20
+    if not DrawMapArt(jm, m, d, d, jm.mask) then jm.artMap = m end
+  end
+end
 
 local function CreateLogPage(page)
-  P.ltiles = Tiles(page, 4, 12)
+  -- the zone you fish in, round in a gold ring
+  local MAPD = JHERO_H - 20
+  local jm = CreateFrame("Frame", nil, page)
+  jm:SetSize(MAPD, MAPD)
+  jm:SetPoint("TOPLEFT", page, "TOPLEFT", 20, -12)
+  jm.base = Icon(jm, MAPD, CIRCLE, "BACKGROUND")
+  jm.base:SetAllPoints(jm)
+  local cl = THEME.cardLow
+  jm.base:SetVertexColor(cl[1], cl[2], cl[3], 1)
+  jm.tiles = {}
+  if jm.CreateMaskTexture then
+    local ok, mask = pcall(jm.CreateMaskTexture, jm)
+    if ok and mask then
+      pcall(mask.SetTexture, mask, CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+      mask:SetAllPoints(jm)
+      jm.mask = mask
+    end
+  end
+  local ringF = CreateFrame("Frame", nil, jm)
+  ringF:SetAllPoints(jm)
+  local rl = Num(jm.GetFrameLevel and jm:GetFrameLevel())
+  if rl and ringF.SetFrameLevel then ringF:SetFrameLevel(rl + 3) end
+  jm.ring = ringF:CreateTexture(nil, "OVERLAY")
+  jm.ring:SetPoint("CENTER", jm, "CENTER", 0, 0)
+  jm.ring:SetSize(MAPD + 18, MAPD + 18)
+  if jm.ring:SetTexture(MEDIA .. "BookRing") == false then jm.ring:Hide() end
+  jm.name = Text(ringF, 11, "goldLight", "CENTER", "OVERLAY")
+  jm.name:SetPoint("BOTTOM", jm, "BOTTOM", 0, 18)
+  jm:EnableMouse(true)
+  jm:SetScript("OnEnter", function(self) if self.m then Style.Tooltip(self, ZoneName(self.m), { { L["Click: show the zone on the tab Waters."] } }, nil, "ANCHOR_RIGHT") end end)
+  jm:SetScript("OnLeave", function(self) Style.HideTooltip(self) end)
+  jm:SetScript("OnMouseUp", function(self) if self.m and ns.OpenBook then ns.OpenBook("waters", self.m) end end)
+  P.lmap = jm
+  P.ltiles = Tiles(page, 4, 12, nil, 20 + MAPD + 24)
   P.lchips = {}
   for i, key in ipairs(FILTERS) do
     local c = Chip(page, function() lfilter = key Refresh(true) end)
     c.key = key
-    if i == 1 then c:SetPoint("TOPLEFT", page, "TOPLEFT", 14, -80) end
+    if i == 1 then c:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -JHERO_H - 6) end
     P.lchips[i] = c
   end
   P.lfoot = CreateFrame("Frame", nil, page)
   P.lfoot:SetPoint("BOTTOMLEFT") P.lfoot:SetPoint("BOTTOMRIGHT") P.lfoot:SetHeight(28)
-  Tex(P.lfoot, "BACKGROUND", "header"):SetAllPoints(P.lfoot)
+  local fbg = Tex(P.lfoot, "BACKGROUND")
+  fbg:SetAllPoints(P.lfoot)
+  Gradient(fbg, "VERTICAL", "header", 0.85, "header", 0.0)
   CutTip(P.lfoot)
   P.lfootText = Text(P.lfoot, 11, "textHint", "LEFT")
   P.lfootText:SetPoint("LEFT", P.lfoot, "LEFT", 14, 0)
   local list = NewList(page, KINDS, W - 2 - 10 - 8)
-  list:SetPoint("TOPLEFT", page, "TOPLEFT", 6, -110)
-  list:SetPoint("BOTTOMRIGHT", P.lfoot, "TOPRIGHT", -4, 4)
+  list:SetPoint("TOPLEFT", page, "TOPLEFT", 10, -JHERO_H - 36)
+  list:SetPoint("BOTTOMRIGHT", P.lfoot, "TOPRIGHT", -8, 4)
   lists.log = list
 end
 
 local function CreateAtlasPage(page)
   P.atiles = Tiles(page, 3, 12, { 2, 1, 1 })
+  local top = 12 + TILE_H
   P.achips = {}
   for i, key in ipairs(AFILTERS) do
     local c = Chip(page, function() afilter = key Refresh(true) end)
     c.key = key
-    if i == 1 then c:SetPoint("TOPLEFT", page, "TOPLEFT", 14, -80) end
+    if i == 1 then c:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top - 8) end
     P.achips[i] = c
   end
   local detail = CreateFrame("Frame", nil, page)
-  detail:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, -108)
-  detail:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
-  detail:SetWidth(272)
-  Tex(detail, "BACKGROUND", { 0, 0, 0 }, 0.15):SetAllPoints(detail)
-  local edge = Tex(detail, "BORDER", "divider") edge:SetPoint("TOPLEFT") edge:SetPoint("BOTTOMLEFT") edge:SetWidth(1)
-  detail.frame = Tex(detail, "ARTWORK", "textPrimary", 0.15)
+  detail:SetPoint("TOPRIGHT", page, "TOPRIGHT", -12, -top - 40)
+  detail:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -12, 12)
+  detail:SetWidth(DETAIL_W)
+  Card(detail, 0, 0)
+  detail:SetCardLook("card", "cardLow", 0.97, "gold", 0.6)
+  detail.frame = Tex(detail, "ARTWORK", "cardLow", 0.95)
   detail.frame:SetSize(58, 58)
   detail.frame:SetPoint("TOPLEFT", detail, "TOPLEFT", 14, -14)
+  Edges(detail, detail.frame, "gold", 0.6, "ARTWORK")
   detail.icon = Icon(detail, 56, nil, "OVERLAY")
   detail.icon:SetPoint("CENTER", detail.frame, "CENTER", 0, 0)
-  detail.name = Text(detail, 14, "textPrimary", "LEFT")
+  detail.name = Text(detail, 15, "goldLight", "LEFT")
   detail.name:SetPoint("TOPLEFT", detail.frame, "TOPRIGHT", 10, -4)
   detail.name:SetPoint("RIGHT", detail, "RIGHT", -10, 0)
   detail.name:SetWordWrap(true)
@@ -1315,9 +1604,9 @@ local function CreateAtlasPage(page)
     detail.lines[i] = { l = l, r = r }
   end
   P.detail = detail
-  local list = NewList(page, KINDS, W - 2 - 272 - 12 - 8)
-  list:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -110)
-  list:SetPoint("BOTTOMRIGHT", detail, "BOTTOMLEFT", -4, 6)
+  local list = NewList(page, KINDS, W - 2 - DETAIL_W - 12 - 12 - 8)
+  list:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -top - 40)
+  list:SetPoint("BOTTOMRIGHT", detail, "BOTTOMLEFT", -8, 0)
   lists.atlas = list
 end
 
@@ -1325,8 +1614,8 @@ local function CreateWatersPage(page)
   local side = CreateFrame("Frame", nil, page)
   side:SetPoint("TOPLEFT") side:SetPoint("BOTTOMLEFT") side:SetWidth(SIDE_W)
   Tex(side, "BACKGROUND", { 0, 0, 0 }, 0.22):SetAllPoints(side)
-  local edge = Tex(side, "BORDER", "divider") edge:SetPoint("TOPRIGHT") edge:SetPoint("BOTTOMRIGHT") edge:SetWidth(1)
-  P.zoneBox = EditBox(side, L["Find a zone"], function(text) zoneQuery = text Refresh() end, SIDE_W - 20 - 18)
+  local edge = Tex(side, "BORDER", "gold", 0.35) edge:SetPoint("TOPRIGHT") edge:SetPoint("BOTTOMRIGHT") edge:SetWidth(1)
+  P.zoneBox = EditBox(side, L["Find a zone"], function(text) zoneQuery = text Refresh() end, SIDE_W - 20 - 34)
   P.zoneBox:SetPoint("TOPLEFT", side, "TOPLEFT", 10, -10)
   P.zoneBox:SetPoint("TOPRIGHT", side, "TOPRIGHT", -10, -10)
   P.zoneBox:SetHeight(24)
@@ -1348,6 +1637,8 @@ local function CreateWatersPage(page)
   local fade = Tex(hero.shade, "BORDER", { 0, 0, 0 }, 0.5)
   fade:SetPoint("TOPLEFT") fade:SetPoint("BOTTOMLEFT") fade:SetWidth(380)
   if fade.SetGradient and CreateColor then pcall(fade.SetGradient, fade, "HORIZONTAL", CreateColor(0, 0, 0, 0.75), CreateColor(0, 0, 0, 0)) end
+  local bottom = Tex(hero.shade, "BORDER", "gold", 0.6)
+  bottom:SetPoint("BOTTOMLEFT") bottom:SetPoint("BOTTOMRIGHT") bottom:SetHeight(1)
   hero.name = Text(hero.shade, 24, "textPrimary", "LEFT")
   hero.name:SetPoint("BOTTOMLEFT", hero, "BOTTOMLEFT", 20, 38)
   hero.meta = Text(hero.shade, 12, "textSecondary", "LEFT")
@@ -1356,6 +1647,12 @@ local function CreateWatersPage(page)
   hero.count:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -20, -24)
   hero.countLabel = Text(hero.shade, 11, "textSecondary", "RIGHT")
   hero.countLabel:SetPoint("TOPRIGHT", hero.count, "BOTTOMRIGHT", 0, -4)
+  hero.track = Tex(hero.shade, "ARTWORK", "textPrimary", 0.15)
+  hero.track:SetSize(150, 4)
+  hero.track:SetPoint("TOPRIGHT", hero.countLabel, "BOTTOMRIGHT", 0, -8)
+  hero.fill = Tex(hero.shade, "OVERLAY", "gold")
+  hero.fill:SetPoint("TOPLEFT", hero.track, "TOPLEFT") hero.fill:SetPoint("BOTTOMLEFT", hero.track, "BOTTOMLEFT")
+  Gradient(hero.fill, "HORIZONTAL", "goldDark", 1, "goldLight", 1)
   CutTip(hero.shade)
   P.hero = hero
   P.stats = Text(main, 12, "textSecondary", "LEFT")
@@ -1374,18 +1671,22 @@ end
 local function TabButton(parent, key)
   local b = CreateFrame("Button", nil, parent)
   b.key = key
-  b:SetSize(126, HEADER_H)
-  b.hover = Tex(b, "BACKGROUND", "rowHover") b.hover:SetAllPoints(b) b.hover:Hide()
+  b:SetSize(118, HEADER_H - 8)
+  -- a framed tab; the open one brighter with a gold frame
+  Card(b, 2, 0)
+  b.hover = Tex(b, "BACKGROUND", "rowHover", nil, 3)
+  b.hover:SetAllPoints(b.cardFill)
+  b.hover:Hide()
   b.icon = Icon(b, 16, TAB_ICON[key], "ARTWORK")
   if b.icon.SetTexCoord then b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
   b.text = Text(b, 13, "textSecondary", "LEFT")
   b.text:SetText(TAB_TITLE[key])
   b.icon:SetPoint("RIGHT", b, "CENTER", -TextWidth(b.text) / 2 + 2, 0)
   b.text:SetPoint("LEFT", b.icon, "RIGHT", 6, 0)
-  b.mark = Tex(b, "OVERLAY", "accent")
-  b.mark:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 14, 0)
-  b.mark:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -14, 0)
-  b.mark:SetHeight(2)
+  b.mark = Tex(b, "OVERLAY", "goldLight")
+  b.mark:SetPoint("TOPLEFT", b.cardFill, "TOPLEFT", 10, -1)
+  b.mark:SetPoint("TOPRIGHT", b.cardFill, "TOPRIGHT", -10, -1)
+  b.mark:SetHeight(1)
   b:SetScript("OnEnter", function(self) self.hover:Show() ShowCut(self) end)
   b:SetScript("OnLeave", function(self) self.hover:Hide() Style.HideTooltip(self) end)
   b:SetScript("OnClick", function(self) ns.OpenBook(self.key) end)
@@ -1401,15 +1702,29 @@ local function Create()
   book:SetClampedToScreen(true)
   book:SetMovable(true)
   book:Hide()
-  Tex(book, "BACKGROUND", "background", 0.97):SetAllPoints(book)
-  Border(book, "textPrimary", 0.10)
+  -- navy at the top to violet at the bottom, a gold frame (as Questdon's quest book)
+  local bg = Tex(book, "BACKGROUND")
+  bg:SetAllPoints(book)
+  Gradient(bg, "VERTICAL", "backgroundLow", 0.97, "background", 0.97)
+  Border(book, "gold", 0.95)
+  local inner = CreateFrame("Frame", nil, book)
+  inner:SetPoint("TOPLEFT", book, "TOPLEFT", 3, -3)
+  inner:SetPoint("BOTTOMRIGHT", book, "BOTTOMRIGHT", -3, 3)
+  Border(inner, "goldDark", 0.9)
+  local inner2 = CreateFrame("Frame", nil, book)
+  inner2:SetPoint("TOPLEFT", book, "TOPLEFT", 5, -5)
+  inner2:SetPoint("BOTTOMRIGHT", book, "BOTTOMRIGHT", -5, 5)
+  Border(inner2, "gold", 0.35)
   if type(UISpecialFrames) == "table" then table.insert(UISpecialFrames, "LuredonBook") end
   local header = CreateFrame("Frame", nil, book)
   header:SetPoint("TOPLEFT", book, "TOPLEFT", 1, -1)
   header:SetPoint("TOPRIGHT", book, "TOPRIGHT", -1, -1)
   header:SetHeight(HEADER_H)
-  Tex(header, "BACKGROUND", "header"):SetAllPoints(header)
-  local hl = Tex(header, "BORDER", "divider") hl:SetPoint("BOTTOMLEFT") hl:SetPoint("BOTTOMRIGHT") hl:SetHeight(1)
+  local hbg = Tex(header, "BACKGROUND")
+  hbg:SetAllPoints(header)
+  Gradient(hbg, "VERTICAL", "background", 0.0, "header", 0.85)
+  local hl = Tex(header, "BORDER", "gold", 0.7)
+  hl:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 8, 0) hl:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 0) hl:SetHeight(1)
   header:EnableMouse(true)
   header:RegisterForDrag("LeftButton")
   header:SetScript("OnDragStart", function() book:StartMoving() end)
@@ -1432,18 +1747,18 @@ local function Create()
   local prev = close
   for i = #TABS, 1, -1 do
     local b = TabButton(header, TABS[i])
-    b:SetPoint("RIGHT", prev, "LEFT", prev == close and -14 or 0, 0)
+    if prev == close then b:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -44, 0) else b:SetPoint("BOTTOMRIGHT", prev, "BOTTOMLEFT", -4, 0) end
     P.tabs[TABS[i]] = b
     prev = b
   end
-  -- (i18n) tabs as wide as their text needs (at least 126 px); the subtitle gets what is left
+  -- (i18n) tabs as wide as their text needs (at least 118 px); the subtitle gets what is left
   local titleW = TextWidth(title)
   local each = math.floor((W - 2 - 14 - titleW - 10 - 60 - 38) / #TABS) - 50
   local tabsW = 0
   for _, key in ipairs(TABS) do
     local b = P.tabs[key]
     Fit(b.text, each, b)
-    local w = math.max(126, TextWidth(b.text) + 50)
+    local w = math.max(118, TextWidth(b.text) + 50)
     b:SetWidth(w)
     b.icon:ClearAllPoints()
     b.icon:SetPoint("RIGHT", b, "CENTER", -TextWidth(b.text) / 2 + 2, 0)
@@ -1463,6 +1778,21 @@ local function Create()
   CreateLogPage(P.pages.log)
   CreateAtlasPage(P.pages.atlas)
   CreateWatersPage(P.pages.waters)
+  -- the ornaments lie on top of everything and take no clicks
+  local orn = CreateFrame("Frame", nil, book)
+  orn:SetAllPoints(book)
+  local lvl = Num(book.GetFrameLevel and book:GetFrameLevel())
+  if lvl and orn.SetFrameLevel then orn:SetFrameLevel(lvl + 30) end
+  if orn.EnableMouse then orn:EnableMouse(false) end
+  P.corners = {}
+  for i, c in ipairs({ { "TOPLEFT", 0, 1, 0, 1 }, { "TOPRIGHT", 1, 0, 0, 1 }, { "BOTTOMLEFT", 0, 1, 1, 0 }, { "BOTTOMRIGHT", 1, 0, 1, 0 } }) do
+    local t = orn:CreateTexture(nil, "OVERLAY")
+    t:SetSize(44, 44)
+    if t:SetTexture(MEDIA .. "BookCorner") == false then t:Hide() end
+    t:SetTexCoord(c[2], c[3], c[4], c[5])
+    t:SetPoint(c[1], book, c[1], c[1]:find("LEFT") and -3 or 3, c[1]:find("TOP") and 3 or -3)
+    P.corners[i] = t
+  end
   ns.RightClickThrough(book, { header })
   ns.bookFrame = book
   book:ClearAllPoints()
@@ -1476,6 +1806,7 @@ end
 -- Drawing the tabs
 ---------------------------------------------------------------------------
 local function RenderLog(reset)
+  UpdateLogMap()
   local today = DayKey(Now())
   local fish, active, value, ah, s0, s1 = 0, 0, 0, 0, nil, nil
   for _, e in ipairs(ns.BookEntries()) do
@@ -1507,6 +1838,7 @@ local function RenderLog(reset)
   t[4].label:SetText(L["Best session"])
   t[4].value:SetText(best and (ns.Decimal and ns.Decimal(best.fph, 1) or tostring(best.fph)) or "-")
   t[4].small:SetText(best and L["fish per hour, %s"]:format(ShortDate(best.t)) or "")
+  SetColor(t[4].value, best and "goldLight" or "textPrimary")
   local counts = { s = 0, r = 0, m = 0, x = 0 }
   local entries, casts, total = ns.BookEntries(), 0, 0
   for _, e in ipairs(entries) do
@@ -1558,13 +1890,13 @@ local function DetailLines(k)
     if ns.AuctionPricesOn and ns.AuctionPricesOn() then Row(L["Auction house"], Coins(ns.AuctionPrice(k.id)) or L["no price"]) end
     if k.classic then Row({ header = L["Classic data, not confirmed for Forever yet"] }) end
   end
-  local inner = 272 - 28
-  Fit(d.kind, 272 - 14 - 58 - 10 - 10, d)
+  local inner = DETAIL_W - 28
+  Fit(d.kind, DETAIL_W - 14 - 58 - 10 - 10, d)
   for i, line in ipairs(d.lines) do
     local r = rows[i]
     if not r then line.l:SetText("") line.r:SetText("")
     elseif type(r[1]) == "table" then
-      line.l:SetText(r[1].header) SetColor(line.l, "textSecondary") line.r:SetText("")
+      line.l:SetText(r[1].header) SetColor(line.l, "gold") line.r:SetText("")
     else
       line.l:SetText(r[1]) SetColor(line.l, "textHint")
       line.r:SetText(r[2] or "") SetColor(line.r, r[3] or "textPrimary")
@@ -1627,7 +1959,7 @@ local function RenderWaters(reset)
   local meta
   if need then
     meta = L["Skill %d needed, yours %d"]:format(need, total) .. "  ·  "
-      .. (total >= need and Style.Colorize(L["nothing gets away"], "good") or Style.Colorize(L["%d points missing"]:format(need - total), "critical"))
+      .. (total >= need and Colorize(L["nothing gets away"], "good") or Colorize(L["%d points missing"]:format(need - total), "critical"))
   elseif m and ns.IsNewForeverZone and ns.IsNewForeverZone(m) then
     meta = L["New Forever zone: skill needed not published yet."]
   else
@@ -1645,6 +1977,11 @@ local function RenderWaters(reset)
   end
   hero.count:SetText(("%d / %d"):format(caughtKinds or 0, kinds or 0))
   hero.countLabel:SetText(L["kinds caught here"])
+  if (kinds or 0) > 0 then
+    hero.track:Show()
+    local frac = math.min(1, (caughtKinds or 0) / kinds)
+    if frac > 0 then hero.fill:SetWidth(math.max(1, 150 * frac)) hero.fill:Show() else hero.fill:Hide() end
+  else hero.track:Hide() hero.fill:Hide() end
   local heroW = W - 2 - SIDE_W
   Fit(hero.countLabel, 150, hero.shade)
   Fit(hero.name, heroW - 40 - 170, hero.shade)
@@ -1686,7 +2023,8 @@ function Refresh(reset)
   if not book or not book:IsShown() then return end
   for key, b in pairs(P.tabs) do
     local on = key == tab
-    SetColor(b.text, on and "textPrimary" or "textSecondary")
+    SetColor(b.text, on and "goldLight" or "textSecondary")
+    if on then b:SetCardLook("card", "cardLow", 0.98, "gold", 0.9) else b:SetCardLook("cardLow", "cardLow", 0.75, "gold", 0.35) end
     if b.icon.SetDesaturated then b.icon:SetDesaturated(not on) end
     b.icon:SetAlpha(on and 1 or 0.6)
     if on then b.mark:Show() else b.mark:Hide() end
@@ -1732,6 +2070,7 @@ function ns.BookDetailText()
   end
   return table.concat(out, "\n")
 end
+function ns.BookLogMap() local jm = P.lmap return jm and jm.m, jm and jm.artMap end
 function ns.BookArt() local h = P.hero return h and ("map %s, %d tiles drawn"):format(tostring(h.artMap), h.artDrawn or 0) or "not built" end
 
 local pending

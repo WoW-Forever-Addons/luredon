@@ -1,6 +1,7 @@
 local _, ns = ...
 local L = ns.L
 local Style = ns.Style
+local ACCENT = Style.BOOK and Style.BOOK.gold or "accent" -- (1.4.1) the book look: gold accents
 
 ---------------------------------------------------------------------------
 -- Fishing window, built with the shared Style kit (see DESIGN.md).
@@ -111,8 +112,8 @@ local function ZoneTooltip()
   end
   local top = ns.ZoneTopCatches(mapID, 8)
   local z = ns.db.zones[mapID]
-  local fishList, kinds, caughtKinds, classic
-  if ns.ZoneFishList then fishList, kinds, caughtKinds, classic = ns.ZoneFishList(mapID) end
+  local fishList, kinds, caughtKinds, classic, ownList
+  if ns.ZoneFishList then fishList, kinds, caughtKinds, classic, ownList = ns.ZoneFishList(mapID) end
   if #top == 0 or not z then
     -- (1.2) never fished here: what the zone has (bundled list)
     local listed = 0
@@ -129,6 +130,8 @@ local function ZoneTooltip()
       if listed > 0 then
         -- (1.3) zones above level 30: classic data until Forever has its own
         if classic then return title, lines, L["Shares from Wowhead's Classic data, not confirmed for Forever yet. You have no catches here yet."] end
+        -- (1.4.1) Zephras Isle: Wowhead has no list yet, the shares come from Luredon's own test catches
+        if ownList then return title, lines, L["Shares from Luredon's own catches, Wowhead has no list yet. You have no catches here yet."] end
         return title, lines, L["Shares according to Wowhead. You have no catches here yet."]
       end
       if not fishList then lines[#lines + 1] = L["No data yet."] end
@@ -194,6 +197,7 @@ local function SessionTooltip()
   if s.junk > 0 then lines[#lines + 1] = { L["Junk"], s.junk } end
   if s.casts > 0 then lines[#lines + 1] = { L["Catch rate"], Style.Percent(s.catches / s.casts) } end
   if s.missed > 0 then lines[#lines + 1] = { L["Clicked too early"], s.missed } end
+  if (s.bitesMissed or 0) > 0 then lines[#lines + 1] = { L["Bites missed"], s.bitesMissed } end -- (1.4.1)
   local goldH = ns.PerHour(ns.SessionValue())
   if goldH then lines[#lines + 1] = { L["Gold/h"], ns.Money(goldH) } end
   -- (1.0) auction prices (Auctionator)
@@ -246,7 +250,9 @@ end
 -- Window
 ---------------------------------------------------------------------------
 local function Create()
+  -- (1.4.1, Daniel 10.10.) the window in the fishing book's look (Style v3, gold instead of blue)
   panel = Style.Panel("LuredonPanel", UIParent, {
+    look = "book", media = "Interface\\AddOns\\Luredon\\Media\\",
     title = Style.Wordmark("Lure", "don"),
     width = WIDTH,
     close = true,
@@ -309,7 +315,7 @@ local function Create()
   -- (1.3) the fishing book, a clear line of its own
   rows.book = Style.Row(panel):SetGapBefore(Style.SPACING.section)
   rows.book:SetIcon("Interface\\Icons\\INV_Misc_Book_09", false, { 0.08, 0.92, 0.08, 0.92 })
-  rows.book:SetText(L["Fishing book"], "accent")
+  rows.book:SetText(L["Fishing book"], ACCENT)
   rows.book:SetValue("/ld book", "textHint")
   rows.book:SetOnClick(function(_, button) if button == nil or button == "LeftButton" then ns.ToggleBook() end end)
   rows.book:SetTooltip(function()
@@ -350,7 +356,7 @@ local function UpdateFishing()
   if known and maxRank <= 0 then
     -- The client gave no skill (yet): no "0 / 0" with an empty bar.
     KV(rows.skill, L["Skill"], L["unknown"], "textHint")
-    SetBar(bars.skill, 0, "accent")
+    SetBar(bars.skill, 0, ACCENT)
   elseif known then
     local value = ("%d / %d"):format(rank, maxRank)
     if modifier > 0 then value = value .. " " .. Style.Colorize(("+%d"):format(modifier), "good") end
@@ -358,7 +364,7 @@ local function UpdateFishing()
     local milestone = ns.MILESTONES[maxRank]
     local color = atCap and (milestone and "warning" or "good") or "textPrimary"
     KV(rows.skill, L["Skill"], value, color)
-    SetBar(bars.skill, maxRank > 0 and rank / maxRank or 0, atCap and color or "accent")
+    SetBar(bars.skill, maxRank > 0 and rank / maxRank or 0, atCap and color or ACCENT)
   end
 
   -- Casts per skill point (tooltip: estimates)
@@ -457,7 +463,7 @@ local function UpdateSession(known)
     local what = goalItem and L["%s in bags"]:format(ns.GetItemInfo(goalItem) or ("item:" .. goalItem)) or L["fish"]
     local done = progress >= goal
     KV(rows.goal, L["Goal"], ("%d / %d %s"):format(math.min(progress, goal), goal, what), done and "good" or "textPrimary")
-    SetBar(bars.goal, progress / goal, done and "good" or "accent")
+    SetBar(bars.goal, progress / goal, done and "good" or ACCENT)
   end
 end
 

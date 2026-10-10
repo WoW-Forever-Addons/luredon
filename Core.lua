@@ -8,6 +8,7 @@ ns.defaults = {
   bagWarning = true,
   sounds = true,
   softInteract = false,
+  bobberCursor = true,  -- (1.4.1) small bobber at the pointer while the mouse is on the bobber
   findFish = true,
   showPanel = true,
   panelOnlyWithPole = true,
@@ -42,6 +43,7 @@ ns.defaults = {
   logPos = nil,         -- 1.17: position of the catch log window
   logCollapsed = false, -- 1.17: catch log window shows only its title bar
   hideUI = false,       -- (1.4) hide the whole interface while the line is out (asked once: askedHideUI)
+  chatFeed = "private", -- (1.4.1) chat while the interface is hidden: "private", "all" or "off"
   fishingView = "off",  -- 1.17: while the line is out: "off", "compact" (title bar only) or "faded" (no background)
   shareData = true,     -- 1.0.1: send own fishing totals to guild and group (Share.lua)
   shared = {},          -- 1.0.1: totals other players reported, per key and reporter
@@ -223,6 +225,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
     AngelKompassDB = nil
     LuredonDB = LuredonDB or {}
     MergeDefaults(LuredonDB, ns.defaults)
+    -- (1.4.1, Daniel 09.10.) the water rings around the bobber pointer are gone: drop their old setting
+    LuredonDB.bobberRipples = nil
     ns.MigrateUI(LuredonDB)
     ns.db = LuredonDB
     for _, fn in ipairs(initCallbacks) do ns.Call("init", fn) end

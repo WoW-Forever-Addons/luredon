@@ -1,5 +1,19 @@
 # Changes
 
+## 1.4.1
+
+- **Update note:** new files, so restart the game after updating (a /reload is not enough).
+- **Chat while the interface is hidden:** new whispers, guild, group and raid messages now show at the bottom left while Luredon hides the interface, and fade out after 20 seconds. A whisper no longer brings the interface back. Choose "All chat" to see say, yell and channels too, or switch it off, under Options > Casting and lures.
+- **Bobber at the mouse pointer:** while the mouse is on your bobber, a small red and white bobber with a golden rim sits at the pointer. In the last seconds before the line comes in by itself it turns amber, green when you caught something and red when the fish got away. Switch it off under Options > Sound and hooking.
+- **Fishing book in a new look:** the book now matches Questdon's quest book: a gold frame on dark blue, framed tabs, every session, fish and zone as a card, today's numbers as cards and the zone you fish in as a round map in a gold ring. Click the map to open that zone under Waters. The Luredon window wears the same look now: a gold frame with ornaments on dark blue and gold bars.
+- **Cast bar without the interface:** while Luredon hides the interface, your own fishing cast bar stays visible at the bottom centre, with the time left (6.6s, with the decimal comma of your language).
+- **Invitations reach you while the interface is hidden:** a party or guild invitation, a duel, trade or summon request, a resurrection, a ready check, a loot roll or a quest someone shares now brings the interface back, so nothing times out unseen. It also comes back as soon as you start typing.
+- **Alt+Z stays yours:** if you bring the interface back with Alt+Z while Luredon hides it, Luredon lets go and its own lines disappear; the next cast hides it again. If you hid the interface yourself, Luredon leaves it hidden when you move.
+- **Auto Loot tip:** with hiding on and Auto Loot off, Luredon says once that each loot window brings the interface back, and how to avoid it (Auto Loot or Shift-click). Luredon never loots for you.
+- **Summary per fishing stretch:** the chat summary when you take off your pole now covers only that stretch of fishing: casts, fish, getaways, missed bites, skill before and after, new kinds, value and fish per hour.
+- **Missed bites:** a line that comes in by itself without a catch now counts as a missed bite, in the session tooltip, the fishing book and the summary. Moving or a fight never counts.
+- **Zephras Isle has its fish:** the zone tooltip and the fishing book now list the fish of Zephras Isle (from Luredon's own catches until Wowhead has a list, and they say so).
+
 ## 1.4.0
 
 - **Fish without the interface:** if you like, Luredon hides the whole game interface while your line is out, like Alt+Z, and brings it back when you move, a fight starts, you change the target or get a whisper. Your catches show as a ticker at the top of the screen. Luredon asks once; change it any time under Options > Casting and lures. A skill point shows under your catches, and warnings such as full bags or a missing lure appear there in red, since the game's own error line is hidden too.

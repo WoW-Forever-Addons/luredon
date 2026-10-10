@@ -50,9 +50,12 @@ function ns.IsFishKind(id)
   return true
 end
 
+-- (1.4.1) A fifth result: true when the list comes from Luredon's own catches (ns.ZONE_FISH_OWN,
+-- zones Wowhead has no list for yet, e.g. Zephras Isle); its entries carry fromOwn = true.
 function ns.ZoneFishList(mapID)
   local data, classic = ns.ZoneFishData(mapID)
   if type(data) ~= "table" then return nil end
+  local ownList = not classic and ns.ZONE_FISH_OWN and ns.ZONE_FISH_OWN[mapID] and true or nil
   local z = ns.db and type(ns.db.zones) == "table" and ns.db.zones[mapID]
   local own = type(z) == "table" and type(z.fish) == "table" and z.fish or {}
   local list, seen, kinds, caughtKinds = {}, {}, 0, 0
@@ -62,7 +65,7 @@ function ns.ZoneFishList(mapID)
       seen[id] = true
       local caught = tonumber(own[id]) or 0
       list[#list + 1] = { id = id, share = share and share / 100 or nil, caught = caught, kind = kind == "c" and "c" or "f", data = true,
-        classic = classic or nil }
+        classic = classic or nil, fromOwn = ownList }
       if kind ~= "c" then
         kinds = kinds + 1
         if caught > 0 then caughtKinds = caughtKinds + 1 end
@@ -79,7 +82,7 @@ function ns.ZoneFishList(mapID)
   end
   table.sort(extra, function(a, b) if a.caught ~= b.caught then return a.caught > b.caught end return a.id < b.id end)
   for _, e in ipairs(extra) do list[#list + 1] = e end
-  return list, kinds, caughtKinds, classic
+  return list, kinds, caughtKinds, classic, ownList
 end
 
 -- For /ld diag: how many zones have a list, and the current zone.

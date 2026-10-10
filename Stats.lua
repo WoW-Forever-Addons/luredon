@@ -8,8 +8,9 @@ function ns.NoLureCasts() return noLureCasts end
 
 local session
 function ns.ResetSession()
+  -- (1.4.1) bitesMissed: the line came in by itself (a bite nobody clicked)
   session = { active = 0, last = nil, casts = 0, catches = 0, fish = 0, junk = 0,
-              getaways = 0, missed = 0, reported = 0, items = {} }
+              getaways = 0, missed = 0, bitesMissed = 0, items = {} }
   ns.session = session
   -- A session goal starts again from zero.
   if ns.db and ns.ResetGoalBaseline then ns.ResetGoalBaseline() end
@@ -22,7 +23,7 @@ ns.ResetSession()
 -- SESSION_KEEP seconds). Saved at logout, restored when the world is entered.
 -- Note: the Forever beta does not load SavedVariables yet; then a new session starts as before.
 local SESSION_KEEP = 15 * 60
-local SESSION_FIELDS = { "active", "casts", "catches", "fish", "junk", "getaways", "missed", "reported" }
+local SESSION_FIELDS = { "active", "casts", "catches", "fish", "junk", "getaways", "missed", "bitesMissed" }
 local function ServerNow() return GetServerTime and GetServerTime() or time() end
 
 local function Touch()
@@ -284,6 +285,7 @@ ns.On("UI_ERROR_MESSAGE", function(_, _, message)
     if ns.BookGetaway then ns.Call("book getaway", ns.BookGetaway) end
     ns.NoteEvent("got-away")
   elseif ERR_FISH_NOT_HOOKED and message == ERR_FISH_NOT_HOOKED then
+    ns.notHookedAt = GetTime() -- (1.4.1) such a cast is no missed bite
     session.missed = session.missed + 1
     ns.NoteEvent("not-hooked")
   end
@@ -458,11 +460,46 @@ ns.On("UI_ERROR_MESSAGE", function(_, _, message)
   end
 end)
 
+---------------------------------------------------------------------------
+-- (1.4.1, Daniel 09.10.) Missed bites: the line came in by itself at the end of the cast, and
+-- within the catch window there was no loot, no getaway and no "not hooked". A line that comes in
+-- early (moving, a fight, a cancel, a click on the bobber) never counts: only a stop at the end
+-- time the channel announced at the cast does. Without a readable end time nothing is counted.
+---------------------------------------------------------------------------
+local BITE_SLACK = 0.5 -- seconds before the announced end that still count as "by itself"
+local lineEndsAt       -- GetTime() at which the current line comes in by itself
+ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_START", function(_, _, _, spellID)
+  if not ns.IsFishingSpell(spellID) then return end
+  lineEndsAt = nil
+  if type(UnitChannelInfo) ~= "function" then return end
+  local ok, _, _, _, startMS, endMS = pcall(UnitChannelInfo, "player")
+  if ok and ns.Usable(endMS) and type(endMS) == "number" and ns.Usable(startMS) and type(startMS) == "number" and endMS > startMS then
+    lineEndsAt = endMS / 1000
+  end
+end)
+
+local function BiteMissed()
+  session.bitesMissed = (session.bitesMissed or 0) + 1
+  if ns.BookBiteMissed then ns.Call("book bite missed", ns.BookBiteMissed) end
+  ns.NoteEvent("bite-missed")
+end
+
 -- The line comes in (bobber clicked, fish got away or cast cancelled).
 ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_STOP", function(_, _, _, spellID)
   if ns.IsFishingSpell(spellID) then
-    if GetTime() - escapedAt > ESCAPE_GAP then OpenCatch("channel stop", true) end
+    local now = GetTime()
+    if now - escapedAt > ESCAPE_GAP then OpenCatch("channel stop", true) end
     ns.NoteEvent("line-in")
+    local ends = lineEndsAt
+    lineEndsAt = nil
+    if ends and now >= ends - BITE_SLACK then
+      local c = catch
+      C_Timer.After(LOOT_WINDOW, ns.Safe("bite missed", function()
+        if c and c.counted then return end
+        if escapedAt >= now - ESCAPE_GAP or (ns.notHookedAt or -math.huge) >= now - ESCAPE_GAP then return end
+        BiteMissed()
+      end))
+    end
   end
 end)
 
@@ -698,33 +735,43 @@ end
 
 ---------------------------------------------------------------------------
 -- Session summary in chat when the pole goes back into the bags
+-- (1.4.1, Daniel 09.10.) From the fishing book's session that just closed (Book.lua), so it covers
+-- that stretch of fishing only, not everything since the login.
 ---------------------------------------------------------------------------
--- Returns the main text and the details (value, fish per hour) for ns.Report.
-function ns.SessionSummaryText()
-  local s = session
-  local text = L["%d casts, %d catches, %d got away"]:format(s.casts, s.catches, s.getaways)
-  local detail = L["value %s"]:format(ns.Money(ns.SessionValue()))
-  if ns.AuctionPricesOn() then
-    local ah, priced = ns.SessionValueAH()
-    if priced > 0 then detail = detail .. ", " .. L["auction %s"]:format(ns.Money(ah)) end
-  end
-  local fishH = ns.PerHour(s.fish)
-  if fishH then detail = detail .. ", " .. L["%d fish/h"]:format(fishH) end
-  return text, detail
+local function ItemLinkOrName(id)
+  local name, link = ns.GetItemInfo(id)
+  if ns.Usable(link) and type(link) == "string" then return link end
+  if ns.Usable(name) and type(name) == "string" then return name end
+  return "item:" .. tostring(id)
 end
 
-local hadPole
-ns.On("PLAYER_ENTERING_WORLD", function() hadPole = ns.HasPole() end)
-ns.On("PLAYER_EQUIPMENT_CHANGED", function(_, slot)
-  if slot ~= (INVSLOT_MAINHAND or 16) then return end
-  local has = ns.HasPole()
-  -- Only once per stretch of fishing: nothing new since the last summary, no summary.
-  if hadPole and not has and ns.db.sessionSummary and session.casts > session.reported then
-    session.reported = session.casts
-    ns.Report(L["Session"], ns.SessionSummaryText())
+-- e: a book session entry { c casts, f fish, g getaways, m missed bites, s0/s1 skill, nw new kinds,
+-- v value, ah auction value, a fishing seconds }. Returns the main text and the details for ns.Report.
+function ns.SessionSummaryText(e)
+  e = type(e) == "table" and e or {}
+  local function N(v) v = tonumber(v) return v and v == v and v or 0 end
+  local parts = { L["%d casts, %d fish"]:format(N(e.c), N(e.f)) }
+  if N(e.g) > 0 then parts[#parts + 1] = L["%d got away"]:format(N(e.g)) end
+  if N(e.m) > 0 then parts[#parts + 1] = L["%d bites missed"]:format(N(e.m)) end
+  local s0, s1 = N(e.s0), N(e.s1)
+  if s0 > 0 and s1 > s0 then parts[#parts + 1] = L["skill %d to %d"]:format(s0, s1) end
+  if type(e.nw) == "table" and e.nw[1] then
+    local names = {}
+    for _, id in ipairs(e.nw) do names[#names + 1] = ItemLinkOrName(id) end
+    parts[#parts + 1] = L["new kinds: %s"]:format(table.concat(names, ", "))
   end
-  hadPole = has
-end)
+  local detail = L["value %s"]:format(ns.Money(N(e.v)))
+  if ns.AuctionPricesOn() and N(e.ah) > 0 then detail = detail .. ", " .. L["auction %s"]:format(ns.Money(N(e.ah))) end
+  local a = N(e.a)
+  if a >= 60 and N(e.f) > 0 then detail = detail .. ", " .. L["%d fish/h"]:format(N(e.f) / (a / 3600)) end
+  return table.concat(parts, ", "), detail
+end
+
+function ns.ReportSessionSummary(e)
+  if not (ns.db and ns.db.sessionSummary) or type(e) ~= "table" then return false end
+  ns.Report(L["Session"], ns.SessionSummaryText(e))
+  return true
+end
 
 ---------------------------------------------------------------------------
 -- Export: catches per zone as plain text (no character or realm names)

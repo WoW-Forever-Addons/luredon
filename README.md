@@ -104,7 +104,9 @@ Ein Charakter, der Angeln noch nicht erlernt hat, bekommt sie erst, sobald er es
   verkleinert ("Kompakt") oder verliert seinen Hintergrund ("Ohne Hintergrund"). Es kommt vier Sekunden nach dem Einholen zurück (ein Neuwurf
   davor behält die Ansicht), sofort beim Ablegen der Angel, beim Ladebildschirm und im Kampf. Gespeichert wird dabei nichts: deine eigenen
   Einstellungen (Einklappen, Deckkraft) bleiben unverändert. Angefasst werden nur eigene Fenster, nie die Oberfläche des Spiels.
-- Sitzungsbilanz im Chat, wenn du die Angel ablegst (Würfe, Fänge, Entkommen, Wert, Fische/h; abschaltbar).
+- Sitzungsbilanz im Chat, wenn du die Angel ablegst: nur dieser Angelgang (Würfe, Fische, Entkommen, verpasste Bisse, Skill vorher und nachher,
+  neue Arten, Wert, Fische/h; abschaltbar). Verpasster Biss: die Angel zieht zum angekündigten Ende von selbst ein, ohne Beute, ohne
+  "entkommen" und ohne "nichts am Haken"; ein frühes Ende (Bewegung, Kampf, Abbruch) zählt nicht.
 - AH-Preise mit Auctionator (optional, Option "AH-Preise (Auctionator)", an): Ist Auctionator installiert, zeigt das Fenster unter "Wert" die Zeile
   "AH-Wert", der Tooltip dazu AH-Gold/h, das Fangbuch den AH-Preis je Fisch (Maus auf die Art) und die Bilanz im Chat den AH-Wert. Gezählt werden nur Items mit
   gescanntem Preis; Items ohne Preis stehen als "(n ohne Preis)" daneben und fließen nicht als null in die Summe ein, graue Gegenstände zählen nicht
@@ -144,9 +146,10 @@ Esc > Optionen > Reiter "AddOns" > Luredon (oder `/ld options`, oder über das A
   Fangbuch löschen, Fangdaten exportieren, Diagnose, Angelstatistik löschen.
 - Auswerfen und Köder: "Doppel-Rechtsklick zum Angeln", "Zuerst Köder anbringen", "Fenster beim Angeln" (Aus, Kompakt, Ohne Hintergrund; Standard Aus),
   "Ohne Köder warnen", "Bei vollen Taschen warnen".
-- Platschen: "Lauteres Platschen", "Auch im Hintergrund", "Größere Interaktionsreichweite beim Angeln".
+- Ton und Anhieb: "Lauteres Platschen", "Auch im Hintergrund", "Größere Interaktionsreichweite beim Angeln", "Schwimmer am Mauszeiger".
 - Ausrüstung und Aufspüren: "Angel-Ausrüstungsset", "Normales Ausrüstungsset", "Fische automatisch aufspüren".
-- Sitzung und Ziel: "Sitzungsbilanz im Chat", "AH-Preise (Auctionator)", "Hinweis bei seltenen Fängen" mit "Hinweis ab Qualität", "Fangziel" (Regler 0 bis 500, 0 = aus),
+- Sitzung und Ziel: "Sitzungsbilanz im Chat", "AH-Preise (Auctionator)", "Hinweis bei seltenen Fängen" mit "Hinweis ab Qualität",
+  unter "Teilen" "Angeldaten mit Gilde und Gruppe teilen", "Fangziel" (Regler 0 bis 500, 0 = aus),
   "Angelwettbewerb-Timer".
 - Darstellung (gleiche Seite in allen unseren Addons): "Fenster anzeigen", "Nur mit Angel", "Fenster sperren", "Größe" (0,6 bis 1,6),
   "Hintergrund-Deckkraft" (0 bis 1), "Im Kampf abdunkeln" (auf 40 %), "Position zurücksetzen".

@@ -29,7 +29,10 @@ ns.ZONE_FISH = {
   [1456] = { { 6289, 60.2, "f" }, { 6308, 23.9, "f" }, { 6291, 15.9, "f" } },
   [1457] = { { 6289, 61.9, "f" }, { 6291, 19.4, "f" }, { 6308, 18.7, "f" } },
   [1458] = { { 6289, 45.7, "f" }, { 6299, 15.8, "f" }, { 6291, 15.2, "f" }, { 6308, 14.7, "f" }, { 6522, 8.5, "f" } },
+  [2521] = { { 6291, 53.6, "f" }, { 6289, 46.4, "f" } },  -- Zephras Isle: own catches 2026-10-09 (70 catches in 75 casts), not Wowhead
 }
+-- (2026-10-09) Lists above that come from own catches, not from Wowhead (the addon says so).
+ns.ZONE_FISH_OWN = { [2521] = true }
 -- (2026-10-05) Zones above level 30: Wowhead CLASSIC zone pages, tab "Fishing", read 2026-10-05.
 -- Forever has no fishing data there yet (the beta ends at level 30). Used only where ns.ZONE_FISH
 -- has no list, and shown as "classic data, not confirmed for Forever" until a catch confirms it.

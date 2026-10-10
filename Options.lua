@@ -12,6 +12,10 @@ local function QualityOptions()
   return { { "2", L["Uncommon"] }, { "3", L["Rare"] }, { "4", L["Epic"] } }
 end
 
+local function ChatFeedOptions()
+  return { { "private", L["Whispers, guild and group"] }, { "all", L["All chat"] }, { "off", L["Off"] } }
+end
+
 local function GoalLabel(v)
   v = math.floor((v or 0) + 0.5)
   return v <= 0 and L["Off"] or tostring(v)
@@ -39,19 +43,22 @@ local PAGES = {
     { key = "fishingView", kind = "dropdown", name = "Windows while fishing", tip = "While the line is out, Luredon's own windows shrink to the title bar (Compact) or lose their background (Without background). They return a few seconds after the line comes in and in combat. Only Luredon's windows are touched, never the game's interface.", options = ViewOptions, onChange = function()
       if ns.FishingViewChanged then ns.FishingViewChanged() end
     end },
-    { key = "hideUI", name = "Hide the interface while fishing", tip = "When the line goes out, the whole game interface hides, like Alt+Z. Your catches show at the top of the screen. It comes back when you move, a fight starts, you change the target, get a whisper or the loot window opens.", onChange = function()
+    { key = "hideUI", name = "Hide the interface while fishing", tip = "When the line goes out, the whole game interface hides, like Alt+Z. Your catches show at the top of the screen. It comes back when you move, a fight starts, you change the target, start typing, get an invitation or a request, or the loot window opens. Whispers show at the bottom left instead (option below); with that option off, a whisper brings the interface back too.", onChange = function()
       if ns.ApplyHideUI then ns.ApplyHideUI() end
     end },
+    { key = "chatFeed", kind = "dropdown", name = "Chat while the interface is hidden", tip = "New chat messages show at the bottom left while the interface is hidden and fade out after 20 seconds. With this on, a whisper no longer brings the interface back.", parent = "hideUI", options = ChatFeedOptions },
     { header = "Warnings" },
     { key = "lureWarning", name = "Warn when casting without lure", tip = "Shows a warning on the first two casts without a lure in a row, so fishing without one on purpose stays quiet." },
     { key = "bagWarning", name = "Warn when bags are full", tip = "Shows a warning when you cast with full or almost full bags (2 free slots or less)." },
   } },
-  { title = "Splash", tip = "Louder splashes and interact range.", items = {
+  -- (1.4.1) The splash page became "Sound and hooking": it also holds the interact range and the bobber pointer.
+  { title = "Sound and hooking", tip = "Louder splashes, interact range and the bobber at the pointer.", items = {
     { header = "Sound" },
     { key = "sounds", name = "Louder splashes", tip = "While a pole is equipped, sound effects play at full volume and music and ambience are muted. Your settings come back afterwards.", blockedBy = OtherFishingAddon, onChange = function() if ns.UpdateSounds then ns.UpdateSounds() end end },
     { key = "bgSound", name = "Also in the background", tip = "While a pole is equipped, the game keeps playing sound when another window has the focus, so you hear the splash while you are tabbed out. Your setting comes back afterwards.", parent = "sounds", blockedBy = OtherFishingAddon, onChange = function() if ns.RefreshSounds then ns.RefreshSounds() end end },
     { header = "Hooking" },
     { key = "softInteract", name = "Longer interact range while fishing", tip = "Raises the soft interact range while the line is out, so the interact key can hook the bobber. The range may be capped by the client." },
+    { key = "bobberCursor", name = "Bobber at the mouse pointer", tip = "While the mouse is on your bobber, a small bobber sits at the pointer. Its colour turns amber in the last seconds before the line comes in, green when you caught something and red when the fish got away." },
   } },
   { title = "Gear and tracking", tip = "Equipment sets and Find Fish.", items = {
     { header = "Equipment sets" },
@@ -62,15 +69,17 @@ local PAGES = {
       if ns.db.findFish and ns.HasPole() then ns.EnableFindFish() end
     end },
   } },
-  -- 1.14: the rare catch alert moved here from "Splash" (it is about catches, not about sound).
-  { title = "Session and goal", tip = "Session summary, rare catch alert, catch goal and the Fishing Extravaganza timer.", items = {
+  -- 1.14: the rare catch alert moved here from the sound page (it is about catches, not about sound).
+  { title = "Session and goal", tip = "Session summary, rare catch alert, data sharing, catch goal and the Fishing Extravaganza timer.", items = {
     { header = "Chat" },
-    { key = "sessionSummary", name = "Session summary in chat", tip = "When you take off your fishing pole, a short summary of the session appears in chat (casts, catches, getaways, value)." },
+    { key = "sessionSummary", name = "Session summary in chat", tip = "When you take off your fishing pole, a short summary of that stretch of fishing appears in chat (casts, fish, getaways, missed bites, skill, new kinds, value)." },
     { key = "auctionPrices", name = "Auction prices (Auctionator)", tip = "With Auctionator installed, the session shows the value at auction prices next to the vendor value (per hour in the tooltip), the catch log shows the price of each fish and the chat summary adds it. Only items with a scanned price are counted. Without Auctionator this does nothing.", onChange = function() ns.UpdatePanel() end },
     { header = "Alerts" },
-    { key = "shareData", name = "Share fishing data with guild and group", tip = "Sends your catches per zone, casts and getaways by skill and casts per skill point (only numbers, no names) to Luredon players in your guild and group. With their data the zone window shows catches where you have not fished yet and the skill a new zone needs. Shared data is used also when this is off." },
     { key = "rareAlert", name = "Alert for rare catches", tip = "Chat line and a sound when you catch an item of the chosen quality or better (for example camp fish, chests, pets)." },
     { key = "rareQuality", kind = "dropdown", name = "Alert from quality", tip = "Lowest item quality for the rare catch alert.", parent = "rareAlert", options = QualityOptions },
+    -- (1.4.1) sharing has its own header (it is no alert)
+    { header = "Sharing" },
+    { key = "shareData", name = "Share fishing data with guild and group", tip = "Sends your catches per zone, casts and getaways by skill and casts per skill point (only numbers, no names) to Luredon players in your guild and group. With their data the zone window shows catches where you have not fished yet and the skill a new zone needs. Shared data is used also when this is off." },
     { header = "Goal" },
     { key = "goalCount", kind = "slider", name = "Catch goal", tip = "Number of fish for this session (junk does not count); the panel shows the progress, and a sound plays when you reach it. 0 switches the goal off. For one item in the bags: /ld goal <number> <item link>.", min = 0, max = 500, step = 5, format = GoalLabel, onChange = function()
       ns.db.goalItem = 0
@@ -276,6 +285,8 @@ local function Slash(msg)
     ns.ShowExport()
   elseif cmd == "diag" then
     ns.ShowDiag()
+  elseif cmd == "cursortest" then
+    if ns.ToggleCursorTest then ns.ToggleCursorTest() end
   elseif cmd == "debug" then
     ns.ToggleDebug()
   elseif cmd == "camp" then

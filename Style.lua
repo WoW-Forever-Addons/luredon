@@ -9,7 +9,7 @@ local _, ns = ...
 ---------------------------------------------------------------------------
 local Style = ns.Style or {}
 ns.Style = Style
-Style.VERSION = 2
+Style.VERSION = 3 -- v3: opts.look = "book" (the quest book look for a panel)
 -- Style.onError = function(where, err) ... end (set by the addon). Called when
 -- a protected addon callback fails. nil (default): errors stay silent as in v1.
 
@@ -43,6 +43,28 @@ for _, c in pairs(COLORS) do
   end
 end
 Style.COLORS = COLORS
+
+-- (v3) The quest book's colours (Questdon's quest book, Luredon's fishing book): a panel with
+-- opts.look = "book" draws its frame, header, sections and active line in them.
+local BOOK = {
+  background    = { 0.10, 0.11, 0.22 },
+  backgroundLow = { 0.15, 0.10, 0.25 },
+  header        = { 0.07, 0.08, 0.17 },
+  textPrimary   = { 0.96, 0.92, 0.84 },
+  textSecondary = { 0.80, 0.76, 0.68 },
+  textHint      = { 0.58, 0.57, 0.66 },
+  gold          = { 0.86, 0.71, 0.42 },
+  goldLight     = { 0.97, 0.87, 0.60 },
+  goldDark      = { 0.42, 0.30, 0.14 },
+  rowActive     = { 0.86, 0.71, 0.42, 0.14 },
+  rowHover      = { 1, 1, 1, 0.05 },
+  card          = { 0.17, 0.21, 0.40 },
+  cardLow       = { 0.11, 0.13, 0.28 },
+}
+for _, c in pairs(BOOK) do
+  c.hex = string.format("ff%02x%02x%02x", floor(c[1] * 255 + 0.5), floor(c[2] * 255 + 0.5), floor(c[3] * 255 + 0.5))
+end
+Style.BOOK = BOOK
 
 local S = {
   unit = 4,
@@ -1192,6 +1214,11 @@ function Style.Row(panel)
   row.activeBar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
   row.activeBar:SetWidth(S.activeBar)
   row.activeBar:Hide()
+  if panel._look == "book" then
+    -- (v3) the active line as a card of the book: a gold glow and a gold bar
+    Tint(row.activeBg, BOOK.rowActive)
+    Tint(row.activeBar, BOOK.gold, 1)
+  end
   row.icon = row:CreateTexture(nil, "ARTWORK")
   row.icon:SetSize(S.icon, S.icon)
   row.icon:Hide()
@@ -1254,7 +1281,7 @@ function Style.Header(panel, text)
     function hdr:Release() Release(self) end
   end
   hdr._gapBefore, hdr._keep = nil, nil
-  local c = COLORS.textSecondary
+  local c = panel._look == "book" and BOOK.gold or COLORS.textSecondary
   hdr.text:SetTextColor(c[1], c[2], c[3], 1)
   hdr:SetText(text)
   Style.RequestRelayout(panel)
@@ -1528,9 +1555,38 @@ function PanelMethods:SetPanelScale(scale, silent)
   return self
 end
 
+local function BookAlpha(self, alpha)
+  -- (v3) navy at the top, violet at the bottom; the frame stays gold whatever the opacity
+  local bg = BOOK.background
+  local under = self._bookBg and 0 or alpha -- the gradient on top carries the colour
+  if self._backdrop then
+    Call(self, "SetBackdropColor", bg[1], bg[2], bg[3], under)
+    Call(self, "SetBackdropBorderColor", BOOK.gold[1], BOOK.gold[2], BOOK.gold[3], 0.95)
+  else
+    Tint(self._bg, BOOK.background, under)
+    for _, t in ipairs(self._border) do Tint(t, BOOK.gold, 0.95) end
+  end
+  local g = self._bookBg
+  if g then
+    local lo, hi = BOOK.backgroundLow, BOOK.background
+    local done = false
+    if g.SetGradient and CreateColor then
+      done = pcall(g.SetGradient, g, "VERTICAL", CreateColor(lo[1], lo[2], lo[3], alpha), CreateColor(hi[1], hi[2], hi[3], alpha))
+    end
+    if not done then Tint(g, BOOK.background, alpha) end
+  end
+  Tint(self._headerBg, BOOK.header, min(1, alpha + 0.05))
+  Tint(self._divider, BOOK.gold, 0.7)
+end
+
 function PanelMethods:SetBackgroundAlpha(alpha, silent)
   alpha = Clamp(alpha == nil and Style.DEFAULT_ALPHA or alpha, 0, 1)
   self._bgAlpha = alpha
+  if self._look == "book" then
+    BookAlpha(self, alpha)
+    if not silent then Put(self, "alpha", alpha) end
+    return self
+  end
   local bg, hd = COLORS.background, COLORS.header
   local borderA = COLORS.border[4] * min(1, alpha / Style.DEFAULT_ALPHA)
   if self._backdrop then
@@ -1657,6 +1713,7 @@ function Style.Panel(name, parent, opts)
   local p = CreateFrame("Frame", name, parent or UIParent, template)
   p._isStylePanel = true
   p._opts = opts
+  p._look = opts.look == "book" and "book" or nil
   p._items, p._order = {}, {}
   p._collapseKeep = max(0, floor(tonumber(opts.collapseKeep) or 0))
   p._width = max(S.minWidth, floor(tonumber(opts.width) or S.minWidth))
@@ -1764,7 +1821,7 @@ function Style.Panel(name, parent, opts)
 
   local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   if not title:GetFontObject() and GameFontNormal then Call(title, "SetFontObject", GameFontNormal) end
-  local tc = COLORS.textPrimary
+  local tc = p._look == "book" and BOOK.textPrimary or COLORS.textPrimary
   title:SetTextColor(tc[1], tc[2], tc[3], 1)
   title:SetJustifyH("LEFT")
   Call(title, "SetWordWrap", false)
@@ -1799,6 +1856,47 @@ function Style.Panel(name, parent, opts)
       b[4]:SetPoint("TOPRIGHT", p, "TOPRIGHT"); b[4]:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT"); b[4]:SetWidth(px)
     end
     p._divider:SetHeight(px)
+  end
+
+  if p._look == "book" then
+    -- (v3) the quest book's frame: a gradient, a gold line with a dark and a faint inner line, the
+    -- header's gold underline and the corner ornaments (opts.media: the addon's Media folder)
+    p._bookBg = p:CreateTexture(nil, "BACKGROUND", nil, 1)
+    p._bookBg:SetTexture(WHITE)
+    p._bookBg:SetPoint("TOPLEFT", p, "TOPLEFT", 1, -1)
+    p._bookBg:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -1, 1)
+    p._bookLines = {}
+    for _, e in ipairs({ { 2, BOOK.goldDark, 0.9 }, { 4, BOOK.gold, 0.35 } }) do
+      local inset, col, a = e[1], e[2], e[3]
+      for i = 1, 4 do
+        local t = p:CreateTexture(nil, "BORDER")
+        t:SetTexture(WHITE)
+        Tint(t, col, a)
+        if i == 1 then t:SetPoint("TOPLEFT", p, "TOPLEFT", inset, -inset) t:SetPoint("TOPRIGHT", p, "TOPRIGHT", -inset, -inset) t:SetHeight(1)
+        elseif i == 2 then t:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", inset, inset) t:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -inset, inset) t:SetHeight(1)
+        elseif i == 3 then t:SetPoint("TOPLEFT", p, "TOPLEFT", inset, -inset) t:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", inset, inset) t:SetWidth(1)
+        else t:SetPoint("TOPRIGHT", p, "TOPRIGHT", -inset, -inset) t:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -inset, inset) t:SetWidth(1) end
+        p._bookLines[#p._bookLines + 1] = t
+      end
+    end
+    p._divider:ClearAllPoints()
+    p._divider:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 8, 0)
+    p._divider:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -8, 0)
+    if type(opts.media) == "string" then
+      local orn = CreateFrame("Frame", nil, p)
+      orn:SetAllPoints(p)
+      Call(orn, "SetFrameLevel", (tonumber(opts.level) or PANEL_LEVEL) + 20)
+      Call(orn, "EnableMouse", false)
+      p._corners = {}
+      for i, c in ipairs({ { "TOPLEFT", 0, 1, 0, 1 }, { "TOPRIGHT", 1, 0, 0, 1 }, { "BOTTOMLEFT", 0, 1, 1, 0 }, { "BOTTOMRIGHT", 1, 0, 1, 0 } }) do
+        local t = orn:CreateTexture(nil, "OVERLAY")
+        t:SetSize(26, 26)
+        if t:SetTexture(opts.media .. "BookCorner") == false then t:Hide() end
+        Call(t, "SetTexCoord", c[2], c[3], c[4], c[5])
+        t:SetPoint(c[1], p, c[1], c[1]:find("LEFT") and -2 or 2, c[1]:find("TOP") and 2 or -2)
+        p._corners[i] = t
+      end
+    end
   end
 
   for k, fn in pairs(PanelMethods) do p[k] = fn end
