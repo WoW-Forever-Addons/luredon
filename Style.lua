@@ -513,6 +513,7 @@ local ICONS = {
   options  = { atlas = { "QuestLog-icon-setting" },    file = "Interface\\Buttons\\UI-OptionsButton" },
   back     = { atlas = { "common-icon-backarrow" },     file = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up" },
   forward  = { atlas = { "common-icon-forwardarrow" },  file = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up" },
+  report   = { atlas = {},                              file = "Interface\\Buttons\\UI-GuildButton-PublicNote-Up" }, -- (Leveldon 0.1.7)
 }
 Style.ICONS = ICONS
 
@@ -545,12 +546,35 @@ end
 ---------------------------------------------------------------------------
 -- IconButton
 ---------------------------------------------------------------------------
+-- (18.10., Daniel: "the bar with the options is hard to see") the icon's colour: grey, white on hover; without the
+-- window's chrome (plain) gold, white on hover, on a dark round spot. Icons with color = true keep their own colours.
+local PLAIN_ICON = { 1, 0.82, 0.32 }
+local function IconTint(b)
+  local def = ICONS[b.kind] or ICONS.close
+  local hot = b._hover and not b._disabled
+  if def.color then
+    Call(b.icon, "SetDesaturated", false)
+    local v = hot and 1 or 0.9
+    b.icon:SetVertexColor(v, v, v, 1)
+  elseif b._plain then
+    Call(b.icon, "SetDesaturated", true)
+    if hot then b.icon:SetVertexColor(1, 1, 1, 1) else b.icon:SetVertexColor(PLAIN_ICON[1], PLAIN_ICON[2], PLAIN_ICON[3], 1) end
+  else
+    Call(b.icon, "SetDesaturated", true)
+    Tint(b.icon, hot and "textPrimary" or "textSecondary")
+  end
+end
+local function IconButtonSetPlain(b, on)
+  b._plain = on and true or false
+  if b.spot then Call(b.spot, b._plain and "Show" or "Hide") end
+  IconTint(b)
+  return b
+end
 local function IconButtonSetKind(b, kind)
   local def = ICONS[kind] or ICONS.close
   b.kind = ICONS[kind] and kind or "close"
   b.iconSource, b.iconName = SetAtlasOrFile(b.icon, def.atlas, def.file)
-  Call(b.icon, "SetDesaturated", true)
-  Tint(b.icon, (b._hover and not b._disabled) and "textPrimary" or "textSecondary")
+  IconTint(b)
 end
 
 Style.DISABLED_ALPHA = 0.35
@@ -561,7 +585,7 @@ local function IconButtonSetEnabled(b, enabled)
   b._disabled = not enabled
   if b._nativeSetEnabled then pcall(b._nativeSetEnabled, b, enabled) end
   b:SetAlpha(enabled and 1 or Style.DISABLED_ALPHA)
-  Tint(b.icon, (enabled and b._hover) and "textPrimary" or "textSecondary")
+  IconTint(b)
   return b
 end
 
@@ -582,17 +606,25 @@ function Style.IconButton(parent, kind)
   Call(b, "SetHitRectInsets", -2, -2, -2, -2)
   b.icon = b:CreateTexture(nil, "ARTWORK")
   b.icon:SetAllPoints(b)
+  -- (18.10.) the dark round spot behind the icon while the window is plain
+  b.spot = b:CreateTexture(nil, "BACKGROUND")
+  Call(b.spot, "SetTexture", "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+  Call(b.spot, "SetPoint", "CENTER", b, "CENTER", 0, 0)
+  Call(b.spot, "SetSize", S.button + 8, S.button + 8)
+  Call(b.spot, "SetVertexColor", 0, 0, 0, 0.6)
+  Call(b.spot, "Hide")
+  b.SetPlain = IconButtonSetPlain
   b.SetKind = IconButtonSetKind
   b:SetKind(kind)
   Call(b, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
   b:SetScript("OnEnter", function(self)
     self._hover = true
-    if not self._disabled then Tint(self.icon, "textPrimary") end
+    IconTint(self)
     if self._ttTitle then Style.Tooltip(self, self._ttTitle, self._ttLines, self._ttHint, self._ttAnchor) end
   end)
   b:SetScript("OnLeave", function(self)
     self._hover = false
-    Tint(self.icon, "textSecondary")
+    IconTint(self)
     Style.HideTooltip(self)
   end)
   b:SetScript("OnClick", function(self, ...)
@@ -841,7 +873,15 @@ local function RowLayout(row, width)
 end
 
 local function HeaderLayout(hdr, width)
-  hdr.text:SetWidth(width)
+  -- (18.10.) a foldable header keeps room on the right for "+"/"-" and its count
+  local vw = 0
+  if hdr.value and hdr._onFold then
+    hdr.value:ClearAllPoints()
+    hdr.value:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
+    vw = 48
+    hdr.value:SetWidth(vw)
+  end
+  hdr.text:SetWidth(max(width - vw, 1))
   hdr.text:ClearAllPoints()
   hdr.text:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, 0)
   local h, ok = TextHeight(hdr.text)
@@ -925,6 +965,9 @@ function Style.Relayout(panel)
       end
     end
   end
+  -- (18.10., Daniel: "folded, the X cannot be clicked; 3/40 stands over the size handle") the addon's size handle
+  -- (SetGrip) hides while folded (it lay over the title bar's buttons) and gets its own space under the last row
+  if panel._grip then Call(panel._grip, panel._collapsed and "Hide" or "Show") end
   local px = Pixel(panel)
   panel._px = px
   if panel._applyPixel then panel._applyPixel(px) end
@@ -974,11 +1017,12 @@ function Style.Relayout(panel)
       first = false
     end
   end
-  y = y + S.padY
+  y = y + S.padY + (panel._grip and Style.GRIP_SPACE or 0)
   panel._contentHeight = y
   panel._body:SetHeight(y)
   panel:SetHeight(S.header + y)
   FinishHover(panel)
+  if panel._chromeHidden then Style.PlainText(panel, true) end
   if allOk then
     panel._retries = 0
   else
@@ -1087,7 +1131,10 @@ function RowMethods:SetActive(active)
   active = active and true or false
   if self._active == active then return self end
   self._active = active
-  if active then self.activeBg:Show(); self.activeBar:Show() else self.activeBg:Hide(); self.activeBar:Hide() end
+  -- (17.10., Daniel: "still visible" with background and frame off) no highlight box and gold bar while the
+  -- panel's chrome is hidden
+  local plain = self._panel and self._panel._chromeHidden
+  if active and not plain then self.activeBg:Show(); self.activeBar:Show() else self.activeBg:Hide(); self.activeBar:Hide() end
   return self
 end
 
@@ -1279,10 +1326,28 @@ function Style.Header(panel, text)
       return self
     end
     function hdr:Release() Release(self) end
+    -- (18.10.) SetFold(open, count, fn): a click on the header calls fn(header, button); the right shows "-" while
+    -- open, "+ count" while folded. Every Header() call starts unfoldable again.
+    hdr.value = NewFont(hdr, "GameFontNormalLarge", "textPrimary") -- (18.10., Daniel: the "-" was hard to see) bigger and brighter; (20.10.) larger still
+    if hdr.value.SetJustifyH then hdr.value:SetJustifyH("RIGHT") end
+    hdr:SetScript("OnMouseUp", function(self, button) if self._onFold then Try("header.fold", self._onFold, self, button) end end)
+    function hdr:SetFold(open, count, fn)
+      self._onFold = type(fn) == "function" and fn or nil
+      local t = self._onFold and (open and "\226\128\148" or ("+ " .. tostring(count or ""))) or ""
+      -- (20.10.) the long dash is large, the count next to a folded header normal
+      if self.value.SetFontObject then self.value:SetFontObject(open and "GameFontNormalLarge" or "GameFontNormal") end
+      if (self.value:GetText() or "") ~= t then self.value:SetText(t); Changed(self) end
+      self.value:SetShown(self._onFold ~= nil)
+      if self.EnableMouse then self:EnableMouse(self._onFold ~= nil) end
+      return self
+    end
   end
   hdr._gapBefore, hdr._keep = nil, nil
+  if hdr._onFold then hdr:SetFold(nil, nil, nil) end
   local c = panel._look == "book" and BOOK.gold or COLORS.textSecondary
   hdr.text:SetTextColor(c[1], c[2], c[3], 1)
+  local vc = panel._look == "book" and BOOK.goldLight or COLORS.textPrimary
+  hdr.value:SetTextColor(vc[1], vc[2], vc[3], 1)
   hdr:SetText(text)
   Style.RequestRelayout(panel)
   return hdr
@@ -1625,9 +1690,82 @@ end
 
 -- (17.10.) no background, frame, corners or title bar background: only the content and the title bar's text and
 -- buttons (Questdon's quest list, Leveldon's window); the addon stores the switch itself
+-- (17.10., Daniel: "now very hard to read" without background) the window's text with a dark outline while its
+-- chrome is hidden, like the game's names over heads; the font's own flags come back when it is shown again.
+-- Walks the panel's frames and font strings (also the addon's own content frames); runs after every relayout.
+local function PlainFont(fs, on)
+  local ok, path, size, flags = pcall(fs.GetFont, fs)
+  if not (ok and path and size) then return end
+  flags = flags or ""
+  if on then
+    if not flags:find("OUTLINE", 1, true) then
+      fs._plainFlags = flags
+      pcall(fs.SetFont, fs, path, size, flags ~= "" and (flags .. ",OUTLINE") or "OUTLINE")
+    end
+    Call(fs, "SetShadowColor", 0, 0, 0, 1)
+    Call(fs, "SetShadowOffset", 1, -1)
+    -- (18.10., Daniel: "the grey text is hardly readable") grey and dim text a light grey while plain (a font's
+    -- outline is always black in the game: the text itself gets lighter instead)
+    local okC, r, g, b, a = pcall(fs.GetTextColor, fs)
+    if okC and r and g and b then
+      local hi, lo = math.max(r, g, b), math.min(r, g, b)
+      local lit = fs._plainLit
+      if not (lit and math.abs(lit - hi) < 0.01) and hi - lo < 0.18 and hi < 0.8 then
+        fs._plainColor = { r, g, b, a or 1 }
+        fs._plainLit = 0.86
+        Call(fs, "SetTextColor", 0.86, 0.86, 0.86, a or 1)
+      end
+    end
+  else
+    if fs._plainFlags then
+      pcall(fs.SetFont, fs, path, size, fs._plainFlags)
+      fs._plainFlags = nil
+    end
+    if fs._plainColor then
+      local okC, r = pcall(fs.GetTextColor, fs)
+      local c = fs._plainColor
+      if okC and r and math.abs(r - 0.86) < 0.01 then Call(fs, "SetTextColor", c[1], c[2], c[3], c[4]) end
+      fs._plainColor, fs._plainLit = nil, nil
+    end
+  end
+end
+local function PlainWalk(frame, on, depth)
+  if depth > 8 then return end
+  if frame.GetRegions then
+    for _, r in ipairs({ frame:GetRegions() }) do
+      if r and r.GetObjectType and r:GetObjectType() == "FontString" then PlainFont(r, on) end
+    end
+  end
+  if frame.GetChildren then
+    for _, c in ipairs({ frame:GetChildren() }) do if c then PlainWalk(c, on, depth + 1) end end
+  end
+end
+function Style.PlainText(panel, on)
+  if panel then pcall(PlainWalk, panel, on and true or false, 0) end
+end
+
 function PanelMethods:SetChromeHidden(hidden)
   self._chromeHidden = hidden and true or false
+  Style.PlainText(self, self._chromeHidden)
+  for _, b in ipairs(self._buttons or {}) do if b.SetPlain then b:SetPlain(self._chromeHidden) end end
   self:SetBackgroundAlpha(self._bgAlpha, true)
+  -- (17.10., Daniel's screenshot: a thin frame, the step's box and gold bar stayed) the book look's two inner lines
+  -- and gradient and the active row's highlight are shown and hidden here, not only faded
+  local show = not self._chromeHidden
+  for _, t in ipairs(self._bookLines or {}) do Call(t, show and "Show" or "Hide") end
+  if self._bookBg then Call(self._bookBg, show and "Show" or "Hide") end
+  for _, item in ipairs(self._items or {}) do
+    if item._active and item.activeBg then
+      Call(item.activeBg, show and "Show" or "Hide")
+      Call(item.activeBar, show and "Show" or "Hide")
+    end
+  end
+  return self
+end
+Style.GRIP_SPACE = 10
+function PanelMethods:SetGrip(grip)
+  self._grip = grip
+  Style.Relayout(self)
   return self
 end
 function PanelMethods:IsChromeHidden() return self._chromeHidden == true end
