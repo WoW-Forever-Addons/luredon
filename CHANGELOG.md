@@ -1,5 +1,15 @@
 # Changes
 
+## 1.5.0
+
+- **The family look:** the fishing book and the Luredon windows now wear the darker colours of Guildon, with gold lines on dark blue.
+- **Buttons you can see:** every filter button has a frame, turns gold under the mouse and blue when chosen. The fish kind and the zone you picked are blue with a bar on the left.
+- **Tabs:** the open tab of the fishing book is gold, the others are grey and light up under the mouse.
+- **Search field:** a clear frame, blue while you type, and a cross to empty it.
+- **Export window and the question about hiding the interface** have the same look; "Yes" and "No" are real buttons now.
+- **Options from the book:** a gear button next to the close button opens the Luredon options.
+- **The book remembers its tab,** also after a /reload.
+
 ## 1.4.2
 
 - **Open data only:** the fish of each zone and the skill a zone needs now come from the open Classic database CMaNGOS (its fishing loot); Zephras Isle keeps Luredon's own catches. Shares can differ a little from before, fish from pools are not in the lists.

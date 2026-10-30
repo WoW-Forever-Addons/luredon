@@ -321,6 +321,8 @@ local function Create()
   rows.book:SetTooltip(function()
     return L["Fishing book"], nil, L["Your sessions, every kind of fish and every zone with the skill it needs. /ld book"]
   end)
+  -- (1.5.0) it looks like a button of the family (Kit.lua): a line round it, gold under the mouse
+  if ns.UI and ns.UI.ButtonRow then ns.UI.ButtonRow(rows.book) end
 
   -- Next click: quiet hint at the bottom, separated like a section.
   rows.next = Style.Row(panel):SetGapBefore(Style.SPACING.section)

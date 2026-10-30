@@ -525,10 +525,18 @@ local function AtlasKnown(name)
   return nil -- unknown: try SetAtlas and check
 end
 
+-- (28.10.2026, Daniel: Questdon's options button on Classic Era) atlases whose name Classic Era's table has but whose
+-- texture its client does not ship (tools/era_art.py): there SetAtlas succeeds and draws nothing, so they are skipped.
+Style.CLASSIC_HOLLOW = { ["questlog-icon-setting"] = true }
+local function Hollow(name)
+  return WOW_PROJECT_ID ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CLASSIC and Style.CLASSIC_HOLLOW[name:lower()] or false
+end
+Style.AtlasHollow = Hollow
+
 local function SetAtlasOrFile(tex, atlases, file)
   if type(tex.SetAtlas) == "function" then
     for _, name in ipairs(atlases or {}) do
-      local known = AtlasKnown(name)
+      local known = not Hollow(name) and AtlasKnown(name)
       if known ~= false then
         local ok, res = pcall(tex.SetAtlas, tex, name, false)
         if ok and res ~= false then

@@ -417,6 +417,7 @@ function ns.MaybeAskHideUI()
     askPanel = Style.Panel("LuredonAskHideUI", UIParent, {
       title = Style.Wordmark and Style.Wordmark("Lure", "don") or "Luredon",
       width = 380, close = true, strata = "DIALOG",
+      look = "book", media = "Interface\\AddOns\\Luredon\\Media\\", -- (1.5.0) the look of the other windows
       defaultPoint = { "CENTER", "CENTER", 0, 60 },
       get = function() return nil end, set = function() end,
       onClose = function() Answer(false) end,
@@ -434,6 +435,12 @@ function ns.MaybeAskHideUI()
     local no = Style.Row(askPanel)
     no:SetText(L["No, keep the interface"], "textSecondary")
     no:SetOnClick(function() Answer(false) end)
+    -- (1.5.0) the two answers are buttons, not plain lines
+    if ns.UI and ns.UI.ButtonRow then
+      yes:SetGapBefore(Style.SPACING.section)
+      ns.UI.ButtonRow(yes) ns.UI.ButtonRow(no)
+    end
+    askPanel.yes, askPanel.no = yes, no -- (tests)
   end
   -- (Daniel 08.10.: "hardly readable") a question asked once may be large
   if askPanel.SetPanelScale then askPanel:SetPanelScale(ASK_SCALE, true) end

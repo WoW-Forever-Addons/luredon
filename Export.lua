@@ -40,6 +40,7 @@ local function Create()
     width = WIDTH,
     close = true,
     strata = "DIALOG",
+    look = "book", media = "Interface\\AddOns\\Luredon\\Media\\", -- (1.5.0) the look of the other windows
     get = function(key) return state[key] end,
     set = function(key, value) state[key] = value end,
     closeTooltip = { L["Close"], nil, L["Esc closes it too."] },
@@ -56,13 +57,15 @@ local function Create()
   local function Flat(layer, key)
     local t = field:CreateTexture(nil, layer)
     t:SetTexture("Interface\\Buttons\\WHITE8x8")
-    local c = Style.COLORS[key]
+    local c = (Style.PAL and Style.PAL[key]) or Style.COLORS[key]
     t:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
     return t
   end
-  Flat("BACKGROUND", "barBackground"):SetAllPoints(field)
+  -- (1.5.0) the dark inset and gold line of the family (Kit.lua); the old bar colours without it
+  local PALOK = Style.PAL and Style.PAL.well
+  Flat("BACKGROUND", PALOK and "well" or "barBackground"):SetAllPoints(field)
   local edges = {}
-  for i = 1, 4 do edges[i] = Flat("BORDER", "barBorder") end
+  for i = 1, 4 do edges[i] = Flat("BORDER", PALOK and "edge" or "barBorder") end
   edges[1]:SetPoint("TOPLEFT"); edges[1]:SetPoint("TOPRIGHT")
   edges[2]:SetPoint("BOTTOMLEFT"); edges[2]:SetPoint("BOTTOMRIGHT")
   edges[3]:SetPoint("TOPLEFT"); edges[3]:SetPoint("BOTTOMLEFT")

@@ -373,10 +373,16 @@ local THEME = {
   violet        = { 0.66, 0.36, 0.95 },
   cyan          = { 0.30, 0.86, 0.95 },
 }
+-- (1.5.0) the darker family look of Guildon (Kit.lua): these take the values of Style.BOOK
+for _, key in ipairs({ "background", "backgroundLow", "header", "textHint", "card", "cardLow", "rowActive", "rowHover" }) do
+  local src = Style.BOOK and Style.BOOK[key]
+  if src then for i = 1, 4 do THEME[key][i] = src[i] end end
+end
 for _, c in pairs(THEME) do
   c.hex = string.format("ff%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
 end
 ns.BOOK_THEME = THEME -- (tests)
+local UI, PAL = ns.UI, Style.PAL
 
 local function RGB(c) if type(c) == "string" then c = THEME[c] or C[c] end return c or THEME.textPrimary end
 -- Coloured text in the book's colours.
@@ -393,6 +399,7 @@ end
 local function Tex(parent, layer, color, alpha, sub)
   local t = parent:CreateTexture(nil, layer or "BACKGROUND", nil, sub)
   if color then Fill(t, color, alpha) end
+  t._color = color -- (tests)
   return t
 end
 -- A colour gradient on a texture (vertical: c1 at the bottom, c2 at the top); plain fill if the client cannot.
@@ -886,6 +893,12 @@ local function CardCreate(parent)
   Card(c, 0, 0)
   c.sel = Tex(c, "BACKGROUND", "rowActive", nil, 2)
   c.sel:SetAllPoints(c.cardFill)
+  -- (1.5.0) the picked kind: blue like every choice of the family, with a bar on the left
+  c.selBar = Tex(c, "ARTWORK", PAL.blue)
+  c.selBar:SetPoint("TOPLEFT", c.cardFill, "TOPLEFT", 1, -1)
+  c.selBar:SetPoint("BOTTOMLEFT", c.cardFill, "BOTTOMLEFT", 1, 1)
+  c.selBar:SetWidth(3)
+  c.selBar:Hide()
   Clickable(c)
   c.frame = Tex(c, "ARTWORK", "cardLow", 0.95)
   c.frame:SetSize(44, 44)
@@ -946,9 +959,9 @@ local CardsKind = {
           Fit(c.sub, subRoom, c)
         end
         if selKind == k.id then
-          c.sel:Show() c:SetCardLook("card", "cardLow", 0.98, "gold", 0.9)
+          c.sel:Show() c.selBar:Show() c:SetCardLook("card", "cardLow", 0.98, PAL.blue, 0.95)
         else
-          c.sel:Hide()
+          c.sel:Hide() c.selBar:Hide()
           if caught then c:SetCardLook() else c:SetCardLook("cardLow", "cardLow", 0.7, "cardEdge", 0.18) end
         end
         c.frameEdge:SetColor(caught and "gold" or "textHint", caught and 0.6 or 0.3)
@@ -977,8 +990,8 @@ local ZoneKind = {
     Clickable(f)
     f.sel = Tex(f, "BACKGROUND", "rowActive", nil, 2)
     f.sel:SetAllPoints(f)
-    f.bar = Tex(f, "ARTWORK", "gold")
-    f.bar:SetPoint("TOPLEFT") f.bar:SetPoint("BOTTOMLEFT") f.bar:SetWidth(2)
+    f.bar = Tex(f, "ARTWORK", PAL.blue) -- (1.5.0) the chosen zone blue
+    f.bar:SetPoint("TOPLEFT") f.bar:SetPoint("BOTTOMLEFT") f.bar:SetWidth(3)
     f.here = Icon(f, 7, CIRCLE, "OVERLAY")
     f.here:SetVertexColor(THEME.goldLight[1], THEME.goldLight[2], THEME.goldLight[3], 1)
     f.here:SetPoint("LEFT", f, "LEFT", 12, 0)
@@ -1245,20 +1258,21 @@ end
 local function Chip(parent, onClick)
   local b = CreateFrame("Button", nil, parent)
   b:SetHeight(22)
-  b.bg = Tex(b, "BACKGROUND", "textPrimary", 0.05)
-  b.bg:SetAllPoints(b)
+  -- (1.5.0) a framed button of the family (Kit.lua): visible line, gold under the mouse, blue when chosen
+  UI.Skin(b)
   b.text = Text(b, 11, "textSecondary", "CENTER")
   b.text:SetPoint("CENTER", b, "CENTER", 0, 0)
-  b:SetScript("OnEnter", function(self) if not self.on then Fill(self.bg, "textPrimary", 0.10) end ShowCut(self) end)
-  b:SetScript("OnLeave", function(self) if not self.on then Fill(self.bg, "textPrimary", 0.05) end Style.HideTooltip(self) end)
+  function b:Paint() SetColor(self.text, UI.Paint(self)) end
+  b:SetScript("OnEnter", function(self) self.hot = true self:Paint() ShowCut(self) end)
+  b:SetScript("OnLeave", function(self) self.hot = false self:Paint() Style.HideTooltip(self) end)
   b:SetScript("OnClick", function(self) if onClick then ns.Call("book chip", onClick, self) end end)
   function b:Set(text, on)
     self.text:SetText(text)
     Style.FitText(self.text, 1e6) -- back to the normal size (Layout may make it smaller)
     if self._cut then self._cut[self.text] = nil end
     self.on = on and true or false
-    Fill(self.bg, on and "accent" or "textPrimary", on and 0.20 or 0.05)
-    SetColor(self.text, on and "textPrimary" or "textSecondary")
+    self.look = on and "active" or "normal"
+    self:Paint()
     self:SetWidth(TextWidth(self.text) + 20)
   end
   PassRight(b)
@@ -1363,8 +1377,15 @@ end
 
 local function EditBox(parent, placeholderText, onChange, budget)
   local box = CreateFrame("Frame", nil, parent)
-  Tex(box, "BACKGROUND", "textPrimary", 0.06):SetAllPoints(box)
-  Border(box, "gold", 0.30)
+  -- (1.5.0) the field of the family (Guildon's Kit): dark inset, gold line, gold under the mouse, blue while typing
+  UI.Skin(box)
+  function box:Paint()
+    local e = self.focus and PAL.blue or (self.hot and PAL.edgeHot or PAL.edge)
+    UI.Tint(self.edge, e, self.focus and 0.9 or e[4])
+    UI.Tint(self.fill, PAL.well)
+    self._edge = e -- (tests)
+  end
+  box:Paint()
   box.icon = Icon(box, 12, "Interface\\Common\\UI-Searchbox-Icon", "ARTWORK")
   box.icon:SetPoint("LEFT", box, "LEFT", 8, 0)
   box.icon:SetVertexColor(THEME.textHint[1], THEME.textHint[2], THEME.textHint[3], 1)
@@ -1373,20 +1394,41 @@ local function EditBox(parent, placeholderText, onChange, budget)
   edit:SetMaxLetters(40)
   edit:SetFontObject(ChatFontNormal or "ChatFontNormal")
   edit:SetPoint("TOPLEFT", box, "TOPLEFT", 26, 0)
-  edit:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -8, 0)
+  edit:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -24, 0)
   local tc = THEME.textPrimary
   if edit.SetTextColor then edit:SetTextColor(tc[1], tc[2], tc[3]) end
   box.placeholder = Text(box, 12, "textHint", "LEFT")
   box.placeholder:SetPoint("LEFT", box, "LEFT", 26, 0)
   box.placeholder:SetText(placeholderText)
   if budget then Fit(box.placeholder, budget, box) CutTip(box) end
+  -- a cross to empty the field, only while there is text
+  local x = CreateFrame("Button", nil, box)
+  x:SetSize(14, 14)
+  x:SetPoint("RIGHT", box, "RIGHT", -6, 0)
+  x.tex = Icon(x, 14, "Interface\\FriendsFrame\\ClearBroadcastIcon", "ARTWORK")
+  x.tex:SetAllPoints(x)
+  x.tex:SetAlpha(0.6)
+  x:SetScript("OnEnter", function(self) self.tex:SetAlpha(1) end)
+  x:SetScript("OnLeave", function(self) self.tex:SetAlpha(0.6) end)
+  x:SetScript("OnClick", function() edit:SetText("") edit:ClearFocus() end)
+  x:Hide()
+  box.clear = x
   edit:SetScript("OnTextChanged", function(self)
     local text = tostring(self:GetText() or "")
-    if text == "" then box.placeholder:Show() else box.placeholder:Hide() end
+    if text == "" then box.placeholder:Show() x:Hide() x.tex:SetAlpha(0.6) else box.placeholder:Hide() x:Show() end
     ns.Call("book search", onChange, text)
   end)
   edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
   edit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  edit:SetScript("OnEditFocusGained", function() box.focus = true box:Paint() end)
+  edit:SetScript("OnEditFocusLost", function() box.focus = false box:Paint() end)
+  -- a click anywhere on the field starts typing; the mouse makes its line gold
+  box:EnableMouse(true)
+  box:SetScript("OnMouseDown", function() edit:SetFocus() end)
+  box:SetScript("OnEnter", function(self) self.hot = true self:Paint() ShowCut(self) end)
+  box:SetScript("OnLeave", function(self) self.hot = false self:Paint() Style.HideTooltip(self) end)
+  edit:SetScript("OnEnter", function() box.hot = true box:Paint() ShowCut(box) end)
+  edit:SetScript("OnLeave", function() box.hot = false box:Paint() Style.HideTooltip(box) end)
   box.edit = edit
   return box
 end
@@ -1687,8 +1729,17 @@ local function TabButton(parent, key)
   b.mark:SetPoint("TOPLEFT", b.cardFill, "TOPLEFT", 10, -1)
   b.mark:SetPoint("TOPRIGHT", b.cardFill, "TOPRIGHT", -10, -1)
   b.mark:SetHeight(1)
-  b:SetScript("OnEnter", function(self) self.hover:Show() ShowCut(self) end)
-  b:SetScript("OnLeave", function(self) self.hover:Hide() Style.HideTooltip(self) end)
+  -- (1.5.0) a closed tab answers the mouse: gold line and text
+  b:SetScript("OnEnter", function(self)
+    self.hover:Show()
+    if not self.on then self:SetCardHover(true) SetColor(self.text, "goldLight") self.icon:SetAlpha(0.9) end
+    ShowCut(self)
+  end)
+  b:SetScript("OnLeave", function(self)
+    self.hover:Hide()
+    if not self.on then self:SetCardHover(false) SetColor(self.text, PAL.off) self.icon:SetAlpha(0.5) end
+    Style.HideTooltip(self)
+  end)
   b:SetScript("OnClick", function(self) ns.OpenBook(self.key) end)
   PassRight(b)
   return b
@@ -1702,7 +1753,7 @@ local function Create()
   book:SetClampedToScreen(true)
   book:SetMovable(true)
   book:Hide()
-  -- navy at the top to violet at the bottom, a gold frame (as Questdon's quest book)
+  -- a dark blue panel with a gold frame (1.5.0: the darker colours of Guildon, Kit.lua)
   local bg = Tex(book, "BACKGROUND")
   bg:SetAllPoints(book)
   Gradient(bg, "VERTICAL", "backgroundLow", 0.97, "background", 0.97)
@@ -1743,17 +1794,23 @@ local function Create()
   close:SetPoint("RIGHT", header, "RIGHT", -10, 0)
   close:SetTooltip(L["Close"])
   close:SetOnClick(function() book:Hide() end)
+  -- (1.5.0) the options from the book too, left of the close button
+  local opt = Style.IconButton(header, "options")
+  opt:SetPoint("RIGHT", close, "LEFT", -6, 0)
+  opt:SetTooltip(L["Options"], nil, L["Opens the Luredon options."])
+  opt:SetOnClick(function() if ns.OpenOptions then ns.OpenOptions() end end)
+  P.options, P.close = opt, close
   P.tabs = {}
   local prev = close
   for i = #TABS, 1, -1 do
     local b = TabButton(header, TABS[i])
-    if prev == close then b:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -44, 0) else b:SetPoint("BOTTOMRIGHT", prev, "BOTTOMLEFT", -4, 0) end
+    if prev == close then b:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", -64, 0) else b:SetPoint("BOTTOMRIGHT", prev, "BOTTOMLEFT", -4, 0) end
     P.tabs[TABS[i]] = b
     prev = b
   end
   -- (i18n) tabs as wide as their text needs (at least 118 px); the subtitle gets what is left
   local titleW = TextWidth(title)
-  local each = math.floor((W - 2 - 14 - titleW - 10 - 60 - 38) / #TABS) - 50
+  local each = math.floor((W - 2 - 14 - titleW - 10 - 60 - 58) / #TABS) - 50
   local tabsW = 0
   for _, key in ipairs(TABS) do
     local b = P.tabs[key]
@@ -1764,7 +1821,7 @@ local function Create()
     b.icon:SetPoint("RIGHT", b, "CENTER", -TextWidth(b.text) / 2 + 2, 0)
     tabsW = tabsW + w
   end
-  Fit(sub, W - 2 - 14 - titleW - 10 - tabsW - 38 - 16, header)
+  Fit(sub, W - 2 - 14 - titleW - 10 - tabsW - 58 - 16, header)
   header:SetScript("OnEnter", function(self) ShowCut(self) end)
   header:SetScript("OnLeave", function(self) Style.HideTooltip(self) end)
   P.pages = {}
@@ -2023,11 +2080,16 @@ function Refresh(reset)
   if not book or not book:IsShown() then return end
   for key, b in pairs(P.tabs) do
     local on = key == tab
-    SetColor(b.text, on and "goldLight" or "textSecondary")
-    if on then b:SetCardLook("card", "cardLow", 0.98, "gold", 0.9) else b:SetCardLook("cardLow", "cardLow", 0.75, "gold", 0.35) end
+    -- (1.5.0, Daniel 28.10. in Golddon: "die aktuelle Spalte Gold machen und die Rest ausgrauen")
+    b.on = on
+    SetColor(b.text, on and "goldLight" or PAL.off)
+    if on then b:SetCardLook("goldDark", "card", 0.98, "goldLight", 1) else b:SetCardLook("cardLow", "cardLow", 0.6, "gold", 0.22) end
     if b.icon.SetDesaturated then b.icon:SetDesaturated(not on) end
-    b.icon:SetAlpha(on and 1 or 0.6)
+    b.icon:SetAlpha(on and 1 or 0.5)
     if on then b.mark:Show() else b.mark:Hide() end
+    if not on and b.IsMouseOver and b:IsMouseOver() == true then
+      b:SetCardHover(true) SetColor(b.text, "goldLight") b.icon:SetAlpha(0.9)
+    end
   end
   for key, page in pairs(P.pages) do if key == tab then page:Show() else page:Hide() end end
   if tab ~= lastTab then reset = true lastTab = tab end
@@ -2040,21 +2102,28 @@ end
 function ns.UpdateBook() if book and book:IsShown() then Refresh(false) end end
 
 -- which: "log", "atlas" or "waters" (nil: the last one); mapID: the zone on Waters.
+-- (1.5.0) the book opens on the tab you left it on, also after /reload
+local function LastTab()
+  local t = ns.db and ns.db.bookTab
+  if TAB_TITLE[t] then return t end
+end
 function ns.OpenBook(which, mapID)
-  if not book then Create() end
-  which = which or tab
+  if not book then Create() tab = LastTab() or tab end
+  which = TAB_TITLE[which] and which or tab
   if mapID then selZone = mapID zoneSeg = "fish" end
   tab = which
+  if ns.db then ns.db.bookTab = tab end
   if not book:IsShown() then book:Show() end
   Refresh(true)
 end
 
 function ns.ToggleBook(which)
-  if not book then Create() end
+  if not book then Create() tab = LastTab() or tab end
   if book:IsShown() and (which == nil or which == tab) then book:Hide() return end
   ns.OpenBook(which)
 end
 function ns.BookTab() return tab end
+function ns.BookParts() return P end -- (1.5.0 tests)
 function ns.BookZone() return selZone or HereZone() end
 function ns.BookFilter(key) if key then lfilter = key Refresh(true) end return lfilter end
 function ns.BookAtlasFilter(key) if key then afilter = key Refresh(true) end return afilter end

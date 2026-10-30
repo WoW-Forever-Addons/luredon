@@ -214,3 +214,5 @@ Bei jedem Problem zuerst `/ld diag` öffnen und den Text kopieren.
 
 ## Lizenz
 MIT, siehe `LICENSE.txt`. Ausnahme: `Data_Fish.lua` ist aus CMaNGOS classic-db erzeugt und steht unter der GPL v3 (siehe `LICENSE-GPLv3.txt`).
+
+Data from ForeverDB.net (https://foreverdb.net): die Angelfertigkeit für Fischglas, Fischregal und Fischerhütte (20/140/300) in `Data.lua`.
