@@ -94,6 +94,10 @@ function ns.RecordError(where, err)
   end
 end
 
+-- (31.10.2026, DONCORE_PLAN.md step 2) Blizzard options from DonCore (Libs\DonCore\Settings.lua) instead of the own
+-- SettingsUI.lua: ns.BuildSettings, ns.Confirm, ns.SettingVariable. It takes ns.Safe as its guard.
+LibStub("DonCore-1.0"):Get("Settings", 1):Attach(addonName, ns)
+
 -- Errors in Luredon's callbacks that the Style kit caught (row tooltip, click, get/set, fades)
 -- land in the same error log as the rest (/ld diag) instead of staying silent.
 if ns.Style then

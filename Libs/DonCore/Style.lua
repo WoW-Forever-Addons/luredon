@@ -1,14 +1,19 @@
-local _, ns = ...
+local Style = LibStub("DonCore-1.0"):NewModule("Style", 4)
 
 ---------------------------------------------------------------------------
--- Style kit (ns.Style). Identical copy in every addon, see DESIGN.md.
+-- Style kit, DonCore module "Style" (minor 4; Style.VERSION = 3 is the kit's own version), see DESIGN.md.
 -- Only own frames: no hooks, no scripts on Blizzard frames, no Blizzard UI
 -- helper functions. GameTooltip is used directly (SetOwner/AddLine/Show/Hide).
 -- The kit owns no SavedVariables: panels read and write their state through
 -- the get/set callbacks the caller passes in.
+-- (minor 4, 30.10.2026) Style:ForAddon() gives an addon a kit of its own (own COLORS, BOOK, DEFAULT_ALPHA, PAL,
+-- onError): for an addon that changes the kit's colours or fields (Guildon's Theme.lua), so the others keep theirs.
 ---------------------------------------------------------------------------
-local Style = ns.Style or {}
-ns.Style = Style
+if not Style then return end -- the same or a newer Style is loaded already
+
+-- Build(kit) fills a kit table with every token and function; each call makes new colour tables and closures.
+local function Build(Style)
+-- From the next line on identical to StyleKit/Style.lua (tools/sync_core.sh checks it).
 Style.VERSION = 3 -- v3: opts.look = "book" (the quest book look for a panel)
 -- Style.onError = function(where, err) ... end (set by the addon). Called when
 -- a protected addon callback fails. nil (default): errors stay silent as in v1.
@@ -2109,3 +2114,14 @@ function Style.CombatFade(panel, enabled)
 end
 
 function Style.InCombat() return inCombat end
+end -- of Build: the StyleKit part ends above (tools/sync_core.sh checks it)
+
+Build(Style)
+
+-- (minor 4) A kit of its own: the same functions on new tables, so an addon may change COLORS, BOOK, DEFAULT_ALPHA or
+-- set PAL and onError without touching the shared kit the other addons use. Call it once at load, keep the result.
+function Style:ForAddon()
+  local kit = {}
+  Build(kit)
+  return kit
+end

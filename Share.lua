@@ -31,8 +31,12 @@ local FLUSH_GAP = 300        -- seconds between two sends (totals grow steadily 
 local MAX_PER_FLUSH = 5
 local MAX_PER_HOUR = 12      -- messages per hour
 local MAX_MSG = 240
-local MAX_SHARED = 5000      -- keys kept
-local MAX_REPORTERS = 30     -- reporters kept per key
+-- (Leistungsprüfung D23, 31.10.2026) 5000 keys with 30 reporters each could reach several MB. All keys of all 44 fish
+-- zones together are about 600 to 1100 (C per zone, Z per zone and fish, 198 fish, E per zone and skill step fished,
+-- P per step): 2000 leaves room for twice that. 10 players per key are enough for the catch shares and more than the
+-- CONFIRM (2) the zone skill and the tempo ask for. Only kept locally: the messages are the same as before.
+local MAX_SHARED = 2000      -- keys kept (was 5000)
+local MAX_REPORTERS = 10     -- reporters kept per key (was 30)
 local PER_SENDER = 300       -- lines per sender and hour
 local CONFIRM = 2            -- reporters needed for the zone skill and the tempo
 local MIN_CASTS = 50         -- casts behind a zone skill estimate
@@ -196,6 +200,28 @@ local function Prune()
   table.sort(list, function(a, b) if a.n ~= b.n then return a.n < b.n end return a.t < b.t end)
   for i = 1, math.max(#list - math.floor(MAX_SHARED * 0.9), 0) do shared[list[i].key] = nil end
   sharedCount = nil
+end
+
+-- (D23) saved data from before the lower limits: per key the reporters with the most casts or catches stay, and the
+-- keys with the fewest reporters go; the rest stays readable as it was
+local function Weight(v)
+  if type(v) == "table" then return tonumber(v[1]) or 0 end
+  return tonumber(v) or 0
+end
+function ns.ShareTrim()
+  local shared = DB().shared
+  local cut = 0
+  for _, e in pairs(shared) do
+    if type(e) == "table" and type(e.r) == "table" and Count(e.r) > MAX_REPORTERS then
+      local list = {}
+      for r, v in pairs(e.r) do list[#list + 1] = { r, Weight(v) } end
+      table.sort(list, function(a, b) if a[2] ~= b[2] then return a[2] > b[2] end return tostring(a[1]) < tostring(b[1]) end)
+      for i = MAX_REPORTERS + 1, #list do e.r[list[i][1]] = nil cut = cut + 1 end
+    end
+  end
+  sharedCount = Count(shared)
+  if sharedCount > MAX_SHARED then Prune() end
+  return cut
 end
 
 local function Store(key, value, reporter)
@@ -456,6 +482,7 @@ ns.On("CHAT_MSG_ADDON", function(...) OnMessage(...) end)
 local ticker
 ns.OnInit(function()
   Register()
+  ns.Call("share trim", ns.ShareTrim)
   if not ticker and C_Timer and type(C_Timer.NewTicker) == "function" then
     ticker = C_Timer.NewTicker(FLUSH_GAP, function() ns.Call("share", ns.ShareFlush) end)
   end

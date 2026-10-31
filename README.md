@@ -1,4 +1,4 @@
-# Luredon 1.0.0 (WoW Forever)
+# Luredon 1.5.1 (WoW Forever)
 
 Angelhilfe für World of Warcraft: Forever (Client "Camelot", Interface 16001).
 Ein Klick von dir pro Aktion, alles drumherum erledigt das Addon. Kein automatisches Einholen, keine Bisserkennung.

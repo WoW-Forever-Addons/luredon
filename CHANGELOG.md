@@ -1,5 +1,11 @@
 # Changes
 
+## 1.5.1
+
+- **No new addon needed.** Luredon works on its own as before.
+- **Lighter:** chat lines and the reasons to bring the interface back are only watched while Luredon hides the interface; the shared fishing totals are kept smaller (2000 entries, 10 players each), and older saved data is thinned once.
+- **Shared base:** options and window style come from DonCore, the common base of the Don addons. Nothing changes for you.
+
 ## 1.5.0
 
 - **The family look:** the fishing book and the Luredon windows now wear the darker colours of Guildon, with gold lines on dark blue.

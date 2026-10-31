@@ -149,6 +149,8 @@ local TOOLS = {
 for _, page in ipairs(PAGES) do
   for _, item in ipairs(page.items) do
     if item.onChange then item.onChange = ns.Safe("option " .. item.key, item.onChange) end
+    -- (31.10.2026) DonCore Settings guards a page button only as "tool": wrapped here, the error keeps its name
+    if item.kind == "button" and item.onClick then item.onClick = ns.Safe("tool " .. item.name, item.onClick) end
   end
 end
 for _, t in ipairs(TOOLS) do t[3] = ns.Safe("tool " .. t[1], t[3]) end

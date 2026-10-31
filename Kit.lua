@@ -1,10 +1,13 @@
 local _, ns = ...
+-- (31.10.2026, DONCORE_PLAN.md) Luredon's own kit from DonCore (Libs\DonCore\Style.lua): this file darkens the book
+-- colours, sets PAL and the hover alpha without touching the kit of the other addons. Kit.lua is the first own file.
+ns.Style = LibStub("DonCore-1.0"):Get("Style", 4):ForAddon()
 local Style = ns.Style
 
 ---------------------------------------------------------------------------
 -- (1.5.0) The family look of Guildon (Guildon/Theme.lua, Kit.lua; Daniel 26.10.2026: "das dunklere UI ... es ist wichtig,
 -- dass alles die gleiche Style hat", 28.10.: "die Knöpfe sind ... nicht ganz so sichtbar, wie sie sein sollten beim
--- Auswählen"). Loaded right after Style.lua: the book colours are made darker in place (Style.lua stays the StyleKit),
+-- Auswählen"). Loaded first of the own files: the book colours are made darker in place (on the own kit from DonCore),
 -- Style.PAL holds the button colours, ns.UI the shared painters. Every button has three looks:
 -- normal (a visible line round a dark fill), hot (gold line, lighter fill), chosen (blue fill, blue line, bright text).
 ---------------------------------------------------------------------------

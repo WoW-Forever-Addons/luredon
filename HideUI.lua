@@ -24,6 +24,36 @@ local ASK_SCALE = 1.5 -- the question asked once: large enough to read at a glan
 
 local hidden = false
 local hiddenAt = 0 -- (1.4.1) when Luredon hid the interface (GetTime)
+
+-- (Leistungsprüfung D23, 31.10.2026) the events that only matter while Luredon has the interface hidden (chat feed,
+-- reasons to bring it back, among them every chat line and every step) are registered only while it is hidden
+local gate = CreateFrame("Frame")
+local gated, gateOn = {}, false
+local function OnHidden(event, fn)
+  if not gated[event] then
+    -- an event the client lacks throws: tried once here, then left out
+    if not pcall(gate.RegisterEvent, gate, event) then return false end
+    gate:UnregisterEvent(event)
+    gated[event] = {}
+  end
+  table.insert(gated[event], fn)
+  return true
+end
+gate:SetScript("OnEvent", function(_, event, ...)
+  if not ns.db then return end
+  local list = gated[event]
+  if not list then return end
+  for i = 1, #list do ns.Call(event, list[i], event, ...) end
+end)
+local function SetHidden(v)
+  hidden = v
+  if v == gateOn then return end
+  gateOn = v
+  for event in pairs(gated) do
+    if v then gate:RegisterEvent(event) else gate:UnregisterEvent(event) end
+  end
+end
+function ns.HiddenEvents() local n = 0 if gateOn then for _ in pairs(gated) do n = n + 1 end end return n end
 local stats = { hides = 0, shows = 0, failed = 0, lines = 0, lastReason = "-" }
 ns.hideUIStats = stats
 
@@ -67,7 +97,7 @@ end
 -- Back to the normal interface (reason for /ld diag).
 function ns.ShowInterface(reason)
   if not hidden then return end
-  hidden = false
+  SetHidden(false)
   stats.shows, stats.lastReason = stats.shows + 1, reason or "?"
   Visibility(true)
   OverlaysHide()
@@ -79,7 +109,7 @@ end
 local OWN_GRACE = 0.5
 local function Sync()
   if hidden and GetTime() - hiddenAt > OWN_GRACE and UIShown() then
-    hidden = false
+    SetHidden(false)
     stats.released = (stats.released or 0) + 1
     stats.lastReason = "player"
     OverlaysHide()
@@ -104,7 +134,7 @@ ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_START", function(_, _, _, spellID)
     -- interface on moving
     if not UIShown() then stats.playerHidden = (stats.playerHidden or 0) + 1 return end
     if Visibility(false) then
-      hidden = true
+      SetHidden(true)
       hiddenAt = GetTime()
       stats.hides = stats.hides + 1
       if watch then watch:Show() end
@@ -128,13 +158,13 @@ for event, reason in pairs({
   LFG_ROLE_CHECK_SHOW = "group finder", GOSSIP_SHOW = "window", MERCHANT_SHOW = "window",
   MAIL_SHOW = "window", BANKFRAME_OPENED = "window", CONFIRM_BINDER = "window",
 }) do
-  ns.On(event, function()
+  OnHidden(event, function()
     -- (1.4.1) with the chat feed on, a whisper shows up there and the interface stays hidden
     if reason == "whisper" and ns.db and (ns.db.chatFeed or "private") ~= "off" then return end
     ns.ShowInterface(reason)
   end)
 end
-ns.On("PLAYER_EQUIPMENT_CHANGED", function() if not ns.HasPole() then ns.ShowInterface("pole") end end)
+OnHidden("PLAYER_EQUIPMENT_CHANGED", function() if not ns.HasPole() then ns.ShowInterface("pole") end end)
 
 -- (1.4.1, Daniel 09.10.) Auto loot off: every catch opens the loot window, which brings the interface
 -- back. Said once, while the interface is visible. Luredon never loots by itself.
@@ -579,12 +609,12 @@ function ns.ChatFeedAdd(kind, message, sender, channelName)
 end
 
 for event, kind in pairs(FEED_PRIVATE) do
-  ns.On(event, function(_, message, sender)
+  OnHidden(event, function(_, message, sender)
     if hidden and ns.db and (ns.db.chatFeed or "private") ~= "off" then ns.ChatFeedAdd(kind, message, sender) end
   end)
 end
 for event, kind in pairs(FEED_ALL) do
-  ns.On(event, function(_, message, sender, _, _, _, _, _, _, channelBaseName)
+  OnHidden(event, function(_, message, sender, _, _, _, _, _, _, channelBaseName)
     if hidden and ns.db and ns.db.chatFeed == "all" then ns.ChatFeedAdd(kind, message, sender, channelBaseName) end
   end)
 end
