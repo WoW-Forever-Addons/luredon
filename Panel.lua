@@ -1,7 +1,15 @@
 local _, ns = ...
 local L = ns.L
 local Style = ns.Style
-local ACCENT = Style.BOOK and Style.BOOK.gold or "accent" -- (1.4.1) the book look: gold accents
+-- (02.11.2026, StyleKit 2 step 4) the window in the Don look of every small Don window (Style.Panel look "don", like
+-- Questdon's and Leveldon's lists); the skill bar with its trainer steps, the book button and the hint line from DonCore's Kit
+local Kit = LibStub("DonCore-1.0"):Get("Kit", 11)
+local ACCENT = Kit and Kit.C.goldBright or "accent"
+local PART_W = 236 -- a part's width in the 240 px window (Style.Content, without its inset)
+-- (04.11.2026, Era-Test, Daniel: "Lurdon-Fenster ... veränderbar in der Größe, Breite") the width follows the grip
+local MIN_W, MAX_W = 220, 400 -- 220 is the kit's narrowest panel
+local panel
+local function PartW() return panel and panel._width and (panel._width - 4) or PART_W end
 
 ---------------------------------------------------------------------------
 -- Fishing window, built with the shared Style kit (see DESIGN.md).
@@ -13,14 +21,14 @@ local DEFAULT_POINT = { "RIGHT", "RIGHT", -60, 60 }
 local LURE_LOW = 60   -- seconds: the lure is about to run out (warning colour)
 local BAGS_LOW = 2    -- free bag slots: almost full (same limit as the cast warning)
 
-local panel
 local forced -- shown with /ld even without a pole
 local hiding -- a fade-out was started (FadeIn only when hidden or hiding)
 local rows, headers, bars = {}, {}, {}
+local parts, holders = {}, {} -- (StyleKit 2 step 4) own frames in Style.Content holders: skill bar, book button, hint
 
 -- Window state lives in LuredonDB under the existing keys (1.10 values stay valid).
 local KEYS = {
-  pos = "panelPos", locked = "panelLocked", scale = "panelScale", alpha = "panelAlpha",
+  pos = "panelPos", locked = "panelLocked", scale = "panelScale", alpha = "panelAlpha", width = "panelWidth",
   collapsed = "panelCollapsed", combatFade = "combatFade", shown = "showPanel",
 }
 local function Get(key) local k = KEYS[key]; if k and ns.db then return ns.db[k] end end
@@ -48,6 +56,27 @@ local function SetBar(bar, value, color)
   -- Colour changes are not tracked by the kit: tint only when it changed.
   if bar._color ~= color then bar._color = color; bar:SetSegmentColor(1, color) end
 end
+
+-- The skill bar: one tick every 75 points (the trainer steps), the colour of the value when at the cap.
+local SKILL_COLOR = { good = "green", warning = "yellow" }
+local function SkillBar(rank, maxRank, color)
+  local f = parts.skill
+  if not f then return end
+  local steps = math.max(1, math.floor((tonumber(maxRank) or 0) / 75 + 0.5))
+  local b = f.bars[steps]
+  if not b then
+    b = Kit.SegmentBar(f, { ticks = steps })
+    b:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -1)
+    f.bars[steps] = b
+  end
+  for k, other in pairs(f.bars) do if k ~= steps then other:Hide() end end
+  b:Show()
+  b:Layout(PartW() - 16)
+  b:SetColor(SKILL_COLOR[color] or nil)
+  b:SetValue(maxRank > 0 and math.min(1, rank / maxRank) or 0)
+  f.shown, f.color = b, color
+end
+ns.PanelParts = function() return parts end -- (tests)
 
 local function ItemText(id)
   local name, link = ns.GetItemInfo(id)
@@ -250,9 +279,9 @@ end
 -- Window
 ---------------------------------------------------------------------------
 local function Create()
-  -- (1.4.1, Daniel 10.10.) the window in the fishing book's look (Style v3, gold instead of blue)
+  -- (1.4.1, Daniel 10.10.) the window in the fishing book's look; (02.11.2026, StyleKit 2 step 4) the Don look with the logo
   panel = Style.Panel("LuredonPanel", UIParent, {
-    look = "book", media = "Interface\\AddOns\\Luredon\\Media\\",
+    look = "don", logo = "Interface\\Icons\\Trade_Fishing",
     title = Style.Wordmark("Lure", "don"),
     width = WIDTH,
     close = true,
@@ -265,15 +294,19 @@ local function Create()
     onClose = function() ns.TogglePanel(false) end,
     -- Collapsed rows are not updated; expanding shows the current values at once.
     onCollapse = function(_, collapsed) if not collapsed then ns.UpdatePanel() end end,
-    buttons = { { kind = "options", key = "options", tooltip = { L["Options"], nil, L["Opens the Luredon options."] },
-      onClick = function() ns.OpenOptions() end } },
+    -- (01.11.2026) the cog of every Don addon (DonCore Options, Style.Panel donOptions)
+    buttons = { { key = "options", donOptions = "Luredon", hint = "/ld options" } },
   })
 
   rows.notLearned = Style.Row(panel)
 
   headers.fishing = Style.Header(panel, L["Fishing"])
   rows.skill = Style.Row(panel)
-  bars.skill = Style.Bar(rows.skill)
+  -- (StyleKit 2 step 4) the skill bar with a tick at every trainer step (75 points): one Kit.SegmentBar per cap, made
+  -- when that cap first shows
+  parts.skill = CreateFrame("Frame", nil, UIParent)
+  parts.skill.bars = {}
+  holders.skill = Style.Content(panel, parts.skill, 8)
   rows.perPoint = Style.Row(panel):SetTooltip(SkillTooltip)
   rows.lure = Style.Row(panel)
   rows.bags = Style.Row(panel)
@@ -312,30 +345,44 @@ local function Create()
   rows.tasty = Style.Row(panel)
   bars.tasty = Style.Bar(rows.tasty)
 
-  -- (1.3) the fishing book, a clear line of its own
-  rows.book = Style.Row(panel):SetGapBefore(Style.SPACING.section)
-  rows.book:SetIcon("Interface\\Icons\\INV_Misc_Book_09", false, { 0.08, 0.92, 0.08, 0.92 })
-  rows.book:SetText(L["Fishing book"], ACCENT)
-  rows.book:SetValue("/ld book", "textHint")
-  rows.book:SetOnClick(function(_, button) if button == nil or button == "LeftButton" then ns.ToggleBook() end end)
-  rows.book:SetTooltip(function()
-    return L["Fishing book"], nil, L["Your sessions, every kind of fish and every zone with the skill it needs. /ld book"]
-  end)
-  -- (1.5.0) it looks like a button of the family (Kit.lua): a line round it, gold under the mouse
-  if ns.UI and ns.UI.ButtonRow then ns.UI.ButtonRow(rows.book) end
+  -- (1.3) the fishing book; (StyleKit 2 step 4) a button of DonCore's Kit over the whole width
+  parts.book = CreateFrame("Frame", nil, UIParent)
+  parts.book.button = Kit.Button(parts.book, L["Fishing book"], { kind = "primary", small = true, onClick = function(_, button)
+    if button == nil or button == "LeftButton" then ns.ToggleBook() end
+  end })
+  parts.book.button:SetPoint("TOPLEFT", parts.book, "TOPLEFT", 0, 0)
+  parts.book.button:Layout(PartW() - 16)
+  parts.book.button:SetTooltip(L["Fishing book"], { L["Your sessions, every kind of fish and every zone with the skill it needs. /ld book"] })
+  holders.book = Style.Content(panel, parts.book, 24, { gapBefore = Style.SPACING.section })
+  rows.book = holders.book
 
-  -- Next click: quiet hint at the bottom, separated like a section.
-  rows.next = Style.Row(panel):SetGapBefore(Style.SPACING.section)
+  -- Next click: quiet hint at the bottom, separated like a section (Kit.Hint: grey, yellow when the double-click rests).
+  parts.next = CreateFrame("Frame", nil, UIParent)
+  parts.next.hint = Kit.Hint(parts.next)
+  parts.next.hint:SetPoint("TOPLEFT", parts.next, "TOPLEFT", 0, 0)
+  holders.next = Style.Content(panel, parts.next, 20, { gapBefore = Style.SPACING.section })
+  rows.next = holders.next
 
   -- Left clicks stay in the window, the right button reaches the world (camera turning).
   -- A double right-click on the window still never casts (Cast.lua checks the pointer).
   -- Rows with a tooltip and the title bar let the right button through as well; the
   -- small header buttons keep it.
-  local parts = { panel._header }
+  local through = { panel._header, parts.book.button, parts.next.hint }
   for _, item in ipairs(panel._items or {}) do
-    if item._kind == "row" then parts[#parts + 1] = item end
+    if item._kind == "row" then through[#through + 1] = item end
   end
-  ns.RightClickThrough(panel, parts)
+  ns.RightClickThrough(panel, through)
+
+  -- (04.11.2026, Era-Test) the width grip at the bottom right (Style.WidthGrip as in Dropdon's small window), kept in
+  -- LuredonDB.panelWidth; the skill bar, the book button and the hint follow the new width (they cut their text, no
+  -- line jumps)
+  if Style.WidthGrip then
+    Style.WidthGrip(panel, { min = MIN_W, max = MAX_W, onWidth = function()
+      if parts.book and parts.book.button then parts.book.button:Layout(PartW() - 16) end
+      if parts.skill and parts.skill.shown then parts.skill.shown:Layout(PartW() - 16) end
+      if parts.next and parts.next.hint and parts.next.hint._w then parts.next.hint:Layout(PartW() - 16) end
+    end, tooltip = { L["Window width"], { L["Drag: width of the window."] } } })
+  end
 
   Style.CombatFade(panel, ns.db.combatFade)
   ns.panel = panel
@@ -355,10 +402,10 @@ local function UpdateFishing()
 
   -- Skill with bar (base skill against the current cap)
   Visible(rows.skill, known)
+  Visible(holders.skill, known and maxRank > 0)
   if known and maxRank <= 0 then
     -- The client gave no skill (yet): no "0 / 0" with an empty bar.
     KV(rows.skill, L["Skill"], L["unknown"], "textHint")
-    SetBar(bars.skill, 0, ACCENT)
   elseif known then
     local value = ("%d / %d"):format(rank, maxRank)
     if modifier > 0 then value = value .. " " .. Style.Colorize(("+%d"):format(modifier), "good") end
@@ -366,7 +413,7 @@ local function UpdateFishing()
     local milestone = ns.MILESTONES[maxRank]
     local color = atCap and (milestone and "warning" or "good") or "textPrimary"
     KV(rows.skill, L["Skill"], value, color)
-    SetBar(bars.skill, maxRank > 0 and rank / maxRank or 0, atCap and color or ACCENT)
+    SkillBar(rank, maxRank, atCap and color or nil)
   end
 
   -- Casts per skill point (tooltip: estimates)
@@ -580,7 +627,11 @@ local function UpdateNext(known, hasPole)
     text = L["Next click: cast"]
   end
   Visible(rows.next, text and true or false)
-  if text then Line(rows.next, text, "textHint") end
+  if text then
+    local warn = not hasPole or ns.conflict or not ns.db.easyCast or paused
+    parts.next.hint:SetHint(text, warn and "warn" or "text")
+    parts.next.hint:Layout(PartW() - 16)
+  end
 end
 
 -- Returns true when the window has something that changes by itself (a ticker is worth it).

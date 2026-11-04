@@ -788,11 +788,13 @@ function ns.ExportText()
   local build, _, _, toc
   if GetBuildInfo then build, _, _, toc = GetBuildInfo() end
   local out = {
-    "# Luredon catch export, format 1",
+    "# Luredon catch export, format 2",
     ("# addon %s, client %s (%s), locale %s"):format(tostring(version or "?"), tostring(build or "?"),
       tostring(toc or "?"), tostring(GetLocale and GetLocale() or "?")),
     "# zone;mapID;casts;catches;getaways;junk",
     "# fish;mapID;itemID;count",
+    "# byskill;mapID;step;casts;getaways",
+    "# tempo;step;points;casts",
   }
   for _, mapID in ipairs(SortedKeys(ns.db.zones)) do
     local z = ns.db.zones[mapID]
@@ -801,7 +803,21 @@ function ns.ExportText()
       for _, id in ipairs(SortedKeys(z.fish or {})) do
         out[#out + 1] = ("fish;%d;%d;%d"):format(mapID, id, z.fish[id])
       end
+      -- (03.11.2026, format 2) casts and getaways by total skill (base + lure + gear) step..step+24, as Share.lua E
+      local bs = type(z.byskill) == "table" and z.byskill or {}
+      for _, step in ipairs(SortedKeys(bs)) do
+        local b = bs[step]
+        local c, g = type(b) == "table" and tonumber(b.c) or 0, type(b) == "table" and tonumber(b.g) or 0
+        if c > 0 then out[#out + 1] = ("byskill;%d;%d;%d;%d"):format(mapID, step, c, g) end
+      end
     end
+  end
+  -- (03.11.2026, format 2) skill points gained at base skill step..step+24 and their casts (account wide, as Share.lua P)
+  local tempo = type(ns.db.tempo) == "table" and ns.db.tempo or {}
+  for _, step in ipairs(SortedKeys(tempo)) do
+    local t = tempo[step]
+    local p, c = type(t) == "table" and tonumber(t.p) or 0, type(t) == "table" and tonumber(t.c) or 0
+    if p > 0 then out[#out + 1] = ("tempo;%d;%d;%d"):format(step, p, c) end
   end
   return table.concat(out, "\n")
 end

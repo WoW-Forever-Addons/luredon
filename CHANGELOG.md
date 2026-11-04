@@ -1,5 +1,17 @@
 # Changes
 
+## 1.6.0
+- **The Don look:** the fishing book is a window like the other Don addons: drag it bigger or smaller, your kinds of fish as cards with their item, the time of every session on the left, the zone map in the banner. The Luredon window, the question about hiding the interface and the export window look like the rest of the family.
+- **Options in the Don family window:** one tab per area with an icon, drop-down lists, search and a tab for tools and commands, also without Questdon. Your settings are kept.
+- **Interact key fishes:** your interact key casts and puts on a lure (option, on by default; not while you have a soft target, open windows, are in combat or mounted). Longer interaction range is switched on once.
+- **Introduction** at your first cast (can be shown again from the options).
+- **Small window:** drag its width from 220 to 400; the pointer float is smaller (24 instead of 40).
+- **Minimap button** with Luredon's logo and a right-click menu (fishing book, small window, switches, "All options", "Hide minimap button").
+- `/ld export` writes format 2 with catches by skill and speed.
+- **Window size:** all Don windows share one scale, 80 % by default, set from 60 to 110 % under General > Window in the options window. Saved window sizes are reset once, places stay.
+- **Addon list:** the addon has its own logo in the game's addon list.
+- **Update note:** new files, so restart the game after updating (a /reload is not enough).
+
 ## 1.5.1
 
 - **No new addon needed.** Luredon works on its own as before.

@@ -1,20 +1,33 @@
-local Style = LibStub("DonCore-1.0"):NewModule("Style", 4)
+local Style = LibStub("DonCore-1.0"):NewModule("Style", 13)
 
 ---------------------------------------------------------------------------
--- Style kit, DonCore module "Style" (minor 4; Style.VERSION = 3 is the kit's own version), see DESIGN.md.
+-- Style kit, DonCore module "Style" (minor 5; Style.VERSION = 3 is the kit's own version), see DESIGN.md.
 -- Only own frames: no hooks, no scripts on Blizzard frames, no Blizzard UI
 -- helper functions. GameTooltip is used directly (SetOwner/AddLine/Show/Hide).
 -- The kit owns no SavedVariables: panels read and write their state through
 -- the get/set callbacks the caller passes in.
 -- (minor 4, 30.10.2026) Style:ForAddon() gives an addon a kit of its own (own COLORS, BOOK, DEFAULT_ALPHA, PAL,
 -- onError): for an addon that changes the kit's colours or fields (Guildon's Theme.lua), so the others keep theirs.
+-- (minor 5, 02.11.2026) Style.Panel header buttons with donOptions = "<Addon>": the cog of DonCore's one options window
+-- (symbol, click, tooltip from the Options module). A new minor so an older copy of minor 4 never wins over it.
+-- (minor 6, 02.11.2026, StyleKit 2 step 4 with Questdon) opts.look = "don": a panel in the Don style (the colours of
+-- DonCore's Kit, a 28 px head with the addon's mark, a gold frame; without background and frame the fine lines stay).
+-- (minor 7, 02.11.2026, StyleKit 2 step 4 with Leveldon) Style.ICONS "step_<kind>" (the kinds of a step), check, read, timer;
+-- header buttons with minWidth (Style.PlaceButtons); panel:SetFixedHeight(h) with a Style.Content opts.fill that takes the rest.
+-- (minor 8, 02.11.2026) the step symbols cut free (gossip, cursor and target frame art), no item icons with a dark square.
+-- (minor 9, 02.11.2026) plain text: a fitted, uncut text keeps its natural width when the outline comes (no "..." any more).
+-- (minor 10, 02.11.2026, Dropdon step 4) Style.WidthGrip(panel, opts): a grip that drags a panel's width (kept as "width").
+-- (minor 11, 02.11.2026, Geardon step 4) a Don row shows its symbol (row:SetIcon, e.g. a class symbol) after the badge,
+-- 16 px, the title moves right; before it was hidden in Don rows.
+-- (minor 12, 03.11.2026) panel:SetPlainVeil, a veil behind plain panels; gone again in minor 13 (Daniel: "muss weg, es muss
+-- ohne lesbar sein"). (minor 13) a fitted text that gets the plain outline stays inside the room it was fitted to.
 ---------------------------------------------------------------------------
 if not Style then return end -- the same or a newer Style is loaded already
 
 -- Build(kit) fills a kit table with every token and function; each call makes new colour tables and closures.
 local function Build(Style)
 -- From the next line on identical to StyleKit/Style.lua (tools/sync_core.sh checks it).
-Style.VERSION = 3 -- v3: opts.look = "book" (the quest book look for a panel)
+Style.VERSION = 3 -- v3: opts.look = "book" (the quest book look for a panel); stays 3 with the minors (6: opts.look = "don")
 -- Style.onError = function(where, err) ... end (set by the addon). Called when
 -- a protected addon callback fails. nil (default): errors stay silent as in v1.
 
@@ -70,6 +83,19 @@ for _, c in pairs(BOOK) do
   c.hex = string.format("ff%02x%02x%02x", floor(c[1] * 255 + 0.5), floor(c[2] * 255 + 0.5), floor(c[3] * 255 + 0.5))
 end
 Style.BOOK = BOOK
+
+-- (v4) The Don style (StyleKit 2, the same values as Kit.C in DonCore/Kit.lua): a panel with opts.look = "don".
+local DON = {
+  window = { 0.047, 0.059, 0.086 }, panel = { 0.071, 0.090, 0.133 }, rowSel = { 0.141, 0.180, 0.259 },
+  rowHover = { 0.118, 0.153, 0.220 }, gold = { 0.549, 0.427, 0.196 }, goldBright = { 0.831, 0.686, 0.353 },
+  goldMuted = { 0.227, 0.200, 0.141 }, divider = { 0.145, 0.176, 0.239 }, outer = { 0.012, 0.016, 0.024 },
+  hero = { 0.969, 0.922, 0.824 }, body = { 0.824, 0.784, 0.706 }, muted = { 0.529, 0.573, 0.659 },
+}
+for _, c in pairs(DON) do
+  c.hex = string.format("ff%02x%02x%02x", floor(c[1] * 255 + 0.5), floor(c[2] * 255 + 0.5), floor(c[3] * 255 + 0.5))
+end
+Style.DON = DON
+Style.DON_HEADER = 28
 
 local S = {
   unit = 4,
@@ -234,6 +260,7 @@ function Style.FitText(fs, budget, mode)
   if fs._fitKey == key and fs._fitDone ~= nil then return fs._fitDone end
   local result = Style._Fit(fs, budget, wrap)
   fs._fitKey, fs._fitDone = key, result
+  fs._fitBudget = not wrap and budget or nil -- (minor 13) for the outline in PlainFont
   return result
 end
 
@@ -519,7 +546,35 @@ local ICONS = {
   back     = { atlas = { "common-icon-backarrow" },     file = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up" },
   forward  = { atlas = { "common-icon-forwardarrow" },  file = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up" },
   report   = { atlas = {},                              file = "Interface\\Buttons\\UI-GuildButton-PublicNote-Up" }, -- (Leveldon 0.1.7)
+  -- (02.11.2026, Daniel: the "v" of a dropdown) the arrow of a dropdown: the auction house's dropdown arrow where the
+  -- client has it, else the arrow of the game's classic dropdown button (its middle only)
+  dropdown = { atlas = { "auctionhouse-ui-dropdown-arrow-up" }, file = "Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up",
+               coords = { 0.22, 0.78, 0.22, 0.78 } },
+  -- (minor 7, 02.11.2026, StyleKit 2 step 4 with Leveldon) a tick (done), the whole quest to read, a clock
+  check    = { atlas = { "common-icon-checkmark" },     file = "Interface\\RaidFrame\\ReadyCheck-Ready" },
+  read     = { atlas = { "Campaign-QuestLog-LoreBook", "questlog-questtypeicon-lore" }, file = "Interface\\Icons\\INV_Misc_Book_09",
+               coords = { 0.07, 0.93, 0.07, 0.93 } },
+  timer    = { atlas = { "auctionhouse-icon-clock" },   file = "Interface\\Icons\\INV_Misc_PocketWatch_01",
+               coords = { 0.07, 0.93, 0.07, 0.93 } },
 }
+-- (minor 7, 02.11.2026, StyleKit 2 step 4 with Leveldon, Daniel: "Das gilt für gleiche symbole auch") the kinds of a step
+-- (Leveldon's route, Questdon's pins and quest rows, Golddon's vendors, Guildon's trainers): "step_<kind>", one set for all
+-- (minor 8, Daniel 02.11.2026: "schwerter und gold haben noch den grauen kasten") symbols cut free like the ! and ?: the game's
+-- gossip, cursor and target frame art (in Era and Forever) instead of item icons with their dark square
+local G, CUR = "Interface\\GossipFrame\\", "Interface\\CURSOR\\"
+for kind, def in pairs({
+  accept = { { "QuestNormal" }, G .. "AvailableQuestIcon" }, turnin = { { "QuestTurnin" }, G .. "ActiveQuestIcon" },
+  ["do"] = { {}, CUR .. "Attack" }, grind = { {}, CUR .. "Attack" }, farm = { {}, CUR .. "Attack" },
+  train = { {}, G .. "TrainerGossipIcon" }, learn = { {}, G .. "TrainerGossipIcon" }, profs = { {}, G .. "TrainerGossipIcon" },
+  skillup = { {}, G .. "TrainerGossipIcon" }, mount = { {}, G .. "TrainerGossipIcon" },
+  travel = { {}, "Interface\\Minimap\\MinimapArrow" }, fp = { {}, G .. "TaxiGossipIcon" },
+  bind = { {}, G .. "BinderGossipIcon" }, hearth = { {}, G .. "BinderGossipIcon" },
+  buy = { {}, CUR .. "Buy" }, sell = { {}, G .. "VendorGossipIcon" }, use = { {}, CUR .. "Interact" },
+  die = { {}, "Interface\\TargetingFrame\\UI-TargetingFrame-Skull" }, dungeon = { {}, G .. "BattleMasterGossipIcon" },
+  chapter = { {}, "Interface\\QuestFrame\\UI-QuestLog-BookIcon" },
+}) do
+  ICONS["step_" .. kind] = { atlas = def[1], file = def[2], color = true }
+end
 Style.ICONS = ICONS
 
 local function AtlasKnown(name)
@@ -538,7 +593,7 @@ local function Hollow(name)
 end
 Style.AtlasHollow = Hollow
 
-local function SetAtlasOrFile(tex, atlases, file)
+local function SetAtlasOrFile(tex, atlases, file, coords)
   if type(tex.SetAtlas) == "function" then
     for _, name in ipairs(atlases or {}) do
       local known = not Hollow(name) and AtlasKnown(name)
@@ -552,8 +607,13 @@ local function SetAtlasOrFile(tex, atlases, file)
     end
   end
   tex:SetTexture(file)
-  Call(tex, "SetTexCoord", 0, 1, 0, 1)
+  if coords then Call(tex, "SetTexCoord", coords[1], coords[2], coords[3], coords[4]) else Call(tex, "SetTexCoord", 0, 1, 0, 1) end
   return "file", file
+end
+-- (02.11.2026) one of the ICONS on any texture (the DonCore Kit's dropdown arrow); returns "atlas" or "file" and the name
+function Style.SetIcon(tex, kind)
+  local def = ICONS[kind] or ICONS.close
+  return SetAtlasOrFile(tex, def.atlas, def.file, def.coords)
 end
 
 ---------------------------------------------------------------------------
@@ -579,14 +639,15 @@ local function IconTint(b)
 end
 local function IconButtonSetPlain(b, on)
   b._plain = on and true or false
-  if b.spot then Call(b.spot, b._plain and "Show" or "Hide") end
+  -- (minor 6, 02.11.2026, Daniel: "die Kreise drunter weglassen") no dark spot behind the symbol any more, only its gold
+  if b.spot then Call(b.spot, "Hide") end
   IconTint(b)
   return b
 end
 local function IconButtonSetKind(b, kind)
   local def = ICONS[kind] or ICONS.close
   b.kind = ICONS[kind] and kind or "close"
-  b.iconSource, b.iconName = SetAtlasOrFile(b.icon, def.atlas, def.file)
+  b.iconSource, b.iconName = SetAtlasOrFile(b.icon, def.atlas, def.file, def.coords)
   IconTint(b)
 end
 
@@ -810,7 +871,71 @@ local function BarBorder(bar, px)
   b[4]:ClearAllPoints(); b[4]:SetPoint("TOPRIGHT", bar, "TOPRIGHT"); b[4]:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT"); b[4]:SetWidth(px)
 end
 
+-- (v4) a row of the Don style: a level badge (28x18) in front, a 3 px colour mark on the left edge and a second line
+-- below the title; both lines one line each, cut with the whole text in the tooltip (no wrapping), 34 px high
+local DON_ROW_H, BADGE_W, BADGE_H = 34, 28, 18
+local function DonRowLayout(row, width)
+  local left = S.padX + (row._indent or 0) + (row._markSet and 3 or 0)
+  local right = S.padX
+  if row._badgeSet then
+    row.badge:ClearAllPoints()
+    row.badge:SetPoint("LEFT", row, "LEFT", left, 0)
+    row.badge:Show()
+    left = left + BADGE_W + 6
+  elseif row.badge then
+    row.badge:Hide()
+  end
+  if row._markSet then
+    row.mark:ClearAllPoints()
+    row.mark:SetPoint("TOPLEFT", row, "TOPLEFT", row._indent or 0, -1)
+    row.mark:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", row._indent or 0, 1)
+    row.mark:Show()
+  elseif row.mark then
+    row.mark:Hide()
+  end
+  if row.line then row.line:Show() end
+  -- (minor 11) the row's symbol (SetIcon) after the badge, 16 px
+  if row._iconSet then
+    row.icon:ClearAllPoints()
+    row.icon:SetPoint("LEFT", row, "LEFT", left, 0)
+    row.icon:Show()
+    left = left + S.icon + 6
+  else
+    row.icon:Hide()
+  end
+  local inner = max(16, width - left - right)
+  local vw = 0
+  if HasText(row.value) then
+    Style.FitText(row.value, floor(inner * 0.4), "cut")
+    vw = min(TextWidth(row.value), floor(inner * 0.4))
+    row.value:SetWidth(vw)
+    row.value:ClearAllPoints()
+    row.value:SetPoint("RIGHT", row, "RIGHT", -right, 0)
+    row.value:Show()
+  else
+    row.value:Hide()
+  end
+  local tw = max(16, inner - (vw > 0 and (vw + S.valueGap) or 0))
+  row.text:ClearAllPoints()
+  Style.FitText(row.text, tw, "cut")
+  row.text:SetWidth(tw)
+  if row._subSet then
+    row.text:SetPoint("TOPLEFT", row, "TOPLEFT", left, -4)
+    row.sub:ClearAllPoints()
+    row.sub:SetPoint("TOPLEFT", row, "TOPLEFT", left, -19)
+    Style.FitText(row.sub, tw, "cut")
+    row.sub:SetWidth(tw)
+    row.sub:Show()
+  else
+    row.text:SetPoint("LEFT", row, "LEFT", left, 0)
+    if row.sub then row.sub:Hide() end
+  end
+  row._textWidth, row._valueWidth, row._left = tw, vw, left
+  return row._subSet and DON_ROW_H or 22, true
+end
+
 local function RowLayout(row, width)
+  if row._donRow then return DonRowLayout(row, width) end
   local ok = true
   local left = S.padX + (row._indent or 0)
   local right = S.padX
@@ -986,12 +1111,13 @@ function Style.Relayout(panel)
   if panel._applyPixel then panel._applyPixel(px) end
   local width = max(S.minWidth, floor(tonumber(panel._width) or S.minWidth))
   panel:SetWidth(width)
+  if panel._narrowButtons then Style.PlaceButtons(panel, width) end
   if panel._collapsed then
     if not MarkKept(panel) then
       panel._keepMode = false
       RestoreCollapsed(panel)
       panel._body:Hide()
-      panel:SetHeight(S.header)
+      panel:SetHeight(panel._headerH or S.header)
       panel._contentHeight = 0
       FinishHover(panel)
       return true
@@ -1025,15 +1151,46 @@ function Style.Relayout(panel)
       item:ClearAllPoints()
       item:SetPoint("TOPLEFT", panel._body, "TOPLEFT", x, -y)
       item:SetSize(w, h)
-      item._y, item._h = y, h
+      item._y, item._h, item._x = y, h, x
       y = y + h
       first = false
     end
   end
   y = y + S.padY + (panel._grip and Style.GRIP_SPACE or 0)
+  -- (minor 7) a fixed height (SetFixedHeight): the content marked fill (Style.Content opts.fill) takes what is left, the
+  -- items below it move with it; the window never changes its height by itself
+  if panel._fixedHeight then
+    local fill
+    for _, item in ipairs(panel._order) do
+      if item._inUse and item:IsShown() and item._fill then fill = item break end
+    end
+    if fill then
+      local nh = max(1, fill._h + panel._fixedHeight - ((panel._headerH or S.header) + y))
+      local d = nh - fill._h
+      if d ~= 0 then
+        local after = false
+        for _, item in ipairs(panel._order) do
+          if item == fill then after = true
+          elseif after and item._inUse and item:IsShown() then
+            item._y = item._y + d
+            item:ClearAllPoints()
+            item:SetPoint("TOPLEFT", panel._body, "TOPLEFT", item._x or 0, -item._y)
+          end
+        end
+        fill._h = nh
+        fill:SetHeight(nh)
+        y = y + d
+      end
+      local fw = fill:GetWidth()
+      if fill._onFill and (fill._filledH ~= nh or fill._filledW ~= fw) then
+        fill._filledH, fill._filledW = nh, fw
+        Try("content.onFill", fill._onFill, fill.frame, fw, nh)
+      end
+    end
+  end
   panel._contentHeight = y
   panel._body:SetHeight(y)
-  panel:SetHeight(S.header + y)
+  panel:SetHeight((panel._headerH or S.header) + y)
   FinishHover(panel)
   if panel._chromeHidden then Style.PlainText(panel, true) end
   if allOk then
@@ -1078,6 +1235,81 @@ function RowMethods:SetValue(text, color)
     self.value:SetTextColor(c[1], c[2], c[3], 1)
     self._valueColor = color
   end
+  return self
+end
+
+-- (v4) Don rows: SetBadge(text, { r, g, b }) a level badge in the colour (nil: none), SetMark({ r, g, b }) the 3 px mark
+-- on the left edge (nil: none), SetSub(text, color) a second line. Any of them makes the row a Don row (one line each).
+local function DonParts(row)
+  if row.badge then return end
+  local b = CreateFrame("Frame", nil, row)
+  b:SetSize(BADGE_W, BADGE_H)
+  b.bg = Flat(b, "BACKGROUND", { 0, 0, 0 }, 1, 3)
+  b.bg:SetAllPoints(b)
+  b.edge = {}
+  for i = 1, 4 do b.edge[i] = Flat(b, "BORDER", { 0, 0, 0 }, 1) end
+  b.edge[1]:SetPoint("TOPLEFT") b.edge[1]:SetPoint("TOPRIGHT") b.edge[1]:SetHeight(1)
+  b.edge[2]:SetPoint("BOTTOMLEFT") b.edge[2]:SetPoint("BOTTOMRIGHT") b.edge[2]:SetHeight(1)
+  b.edge[3]:SetPoint("TOPLEFT") b.edge[3]:SetPoint("BOTTOMLEFT") b.edge[3]:SetWidth(1)
+  b.edge[4]:SetPoint("TOPRIGHT") b.edge[4]:SetPoint("BOTTOMRIGHT") b.edge[4]:SetWidth(1)
+  b.text = NewFont(b, "GameFontHighlightSmall", "textPrimary")
+  b.text:SetPoint("CENTER", b, "CENTER", 0, 0)
+  b:Hide()
+  row.badge = b
+  row.mark = Flat(row, "ARTWORK", DON.gold, 1)
+  row.mark:SetWidth(3)
+  row.mark:Hide()
+  row.sub = NewFont(row, "GameFontHighlightSmall", "textSecondary")
+  local okF, path, size = pcall(row.sub.GetFont, row.sub)
+  if okF and path and size then pcall(row.sub.SetFont, row.sub, path, max(8, size - 1), "") end
+  row.sub:Hide()
+  row.line = Flat(row, "BORDER", DON.divider, 1)
+  row.line:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+  row.line:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+  row.line:SetHeight(1)
+  row.line:Hide()
+end
+
+-- plain = true: only the coloured text, no box (Daniel 02.11.2026: "die kästen der queststufe auch weglassen")
+function RowMethods:SetBadge(text, rgb, plain)
+  DonParts(self)
+  local on = text ~= nil and text ~= ""
+  local key = on and (tostring(text) .. (rgb and (rgb[1] .. rgb[2] .. rgb[3]) or "") .. (plain and "p" or "")) or nil
+  if key == self._badgeKey and self._donRow then return self end
+  self._badgeKey, self._badgeSet, self._donRow = key, on, true
+  if on then
+    local c = rgb or COLORS.textSecondary
+    self.badge.text:SetText(tostring(text))
+    self.badge.text:SetTextColor(c[1], c[2], c[3], 1)
+    Tint(self.badge.bg, { c[1] * 0.16, c[2] * 0.16, c[3] * 0.16 }, plain and 0 or 1)
+    for _, t in ipairs(self.badge.edge) do Tint(t, { c[1] * 0.45, c[2] * 0.45, c[3] * 0.45 }, plain and 0 or 1) end
+    self.badge.plain = plain and true or nil
+  end
+  Changed(self)
+  return self
+end
+
+function RowMethods:SetMark(rgb)
+  DonParts(self)
+  self._donRow = true
+  if rgb then Tint(self.mark, rgb, 1) end
+  local on = rgb ~= nil
+  if on ~= (self._markSet or false) then self._markSet = on Changed(self) end
+  return self
+end
+
+function RowMethods:SetSub(text, color)
+  DonParts(self)
+  self._donRow = true
+  local s = text ~= nil and tostring(text) or ""
+  local on = s ~= ""
+  if (self.sub:GetText() or "") ~= s or on ~= (self._subSet or false) then
+    self.sub:SetText(s)
+    self._subSet = on
+    Changed(self)
+  end
+  local c = Color(color or (self._panel and self._panel._look == "don" and DON.muted) or "textSecondary")
+  self.sub:SetTextColor(c[1], c[2], c[3], 1)
   return self
 end
 
@@ -1233,6 +1465,10 @@ local function RowReset(row)
   row._indent, row._gapBefore = 0, nil
   row._kv, row._keep, row._ttAnchor = nil, nil, nil
   row._valueMax, row._valueFixed = nil, nil
+  if row.badge then
+    row._badgeSet, row._badgeKey, row._markSet, row._subSet, row._donRow = nil, nil, nil, nil, nil
+    row.badge:Hide() row.mark:Hide() row.sub:SetText("") row.sub:Hide() row.line:Hide()
+  end
   row:SetMain(false)
   row:SetActive(false)
   local wasInteractive = row._onClick ~= nil or row._tooltip ~= nil
@@ -1266,6 +1502,7 @@ function Style.Row(panel)
   row.hover = Flat(row, "BACKGROUND", "rowHover", nil, 1)
   row.hover:SetAllPoints(row)
   row.hover:Hide()
+  if panel._look == "don" then Tint(row.hover, DON.rowHover, 0.85) end
   row.activeBg = Flat(row, "BACKGROUND", "rowActive", nil, 2)
   row.activeBg:SetAllPoints(row)
   row.activeBg:Hide()
@@ -1278,6 +1515,11 @@ function Style.Row(panel)
     -- (v3) the active line as a card of the book: a gold glow and a gold bar
     Tint(row.activeBg, BOOK.rowActive)
     Tint(row.activeBar, BOOK.gold, 1)
+  elseif panel._look == "don" then
+    -- (v4) the picked row of the Don style: the selected navy and a 3 px bright gold mark
+    Tint(row.activeBg, DON.rowSel, 1)
+    Tint(row.activeBar, DON.goldBright, 1)
+    row.activeBar:SetWidth(3)
   end
   row.icon = row:CreateTexture(nil, "ARTWORK")
   row.icon:SetSize(S.icon, S.icon)
@@ -1357,9 +1599,9 @@ function Style.Header(panel, text)
   end
   hdr._gapBefore, hdr._keep = nil, nil
   if hdr._onFold then hdr:SetFold(nil, nil, nil) end
-  local c = panel._look == "book" and BOOK.gold or COLORS.textSecondary
+  local c = panel._look == "book" and BOOK.gold or panel._look == "don" and DON.goldBright or COLORS.textSecondary
   hdr.text:SetTextColor(c[1], c[2], c[3], 1)
-  local vc = panel._look == "book" and BOOK.goldLight or COLORS.textPrimary
+  local vc = panel._look == "book" and BOOK.goldLight or panel._look == "don" and DON.muted or COLORS.textPrimary
   hdr.value:SetTextColor(vc[1], vc[2], vc[3], 1)
   hdr:SetText(text)
   Style.RequestRelayout(panel)
@@ -1564,6 +1806,10 @@ function Style.Content(panel, frame, height, opts)
   end
   holder._inset = not (type(opts) == "table" and opts.inset == false)
   holder._gapBefore = type(opts) == "table" and tonumber(opts.gapBefore) or nil
+  -- (minor 7) opts.fill: with the panel's fixed height this content takes the room that is left; opts.onFill(frame, w, h)
+  -- tells the frame its size (a list lays its rows out)
+  holder._fill = type(opts) == "table" and opts.fill and true or nil
+  holder._onFill = type(opts) == "table" and opts.onFill or nil
   holder._keep = nil
   holder._height = max(1, tonumber(height) or tonumber(holder._height) or 1)
   if not Call(frame, "GetParent") or frame:GetParent() ~= holder then Call(frame, "SetParent", holder) end
@@ -1661,13 +1907,34 @@ local function BookAlpha(self, alpha)
   Tint(self._divider, BOOK.gold, 0.7 * frameA / 0.95)
 end
 
+-- (v4) the Don look: window navy, a black outer line and a gold inner line; the head in the panel navy with a gold line.
+-- Below a third of the opacity the frame fades out with it. Without background and frame (plain) only the head's gold
+-- line stays, at half strength: the rows' own fine lines and marks (DonCore Kit) keep the list readable.
+local function DonAlpha(self, alpha, plain)
+  local w = DON.window
+  local frameA = plain and 0 or (alpha >= 0.35 and 1 or alpha / 0.35)
+  self._frameA = frameA -- (tests, /diag) how strong the frame is drawn now
+  if self._backdrop then
+    Call(self, "SetBackdropColor", w[1], w[2], w[3], plain and 0 or alpha)
+    Call(self, "SetBackdropBorderColor", DON.outer[1], DON.outer[2], DON.outer[3], frameA)
+  else
+    Tint(self._bg, DON.window, plain and 0 or alpha)
+    for _, t in ipairs(self._border) do Tint(t, DON.outer, frameA) end
+  end
+  for _, t in ipairs(self._donLines or {}) do Tint(t, DON.gold, frameA) end
+  Tint(self._headerBg, DON.panel, plain and 0 or (alpha >= 0.35 and min(1, alpha + 0.08) or alpha))
+  Tint(self._divider, DON.gold, plain and 0.5 or max(0.5, frameA))
+  if self._logoEdge then for _, t in ipairs(self._logoEdge) do Tint(t, DON.gold, 1) end end
+end
+
 function PanelMethods:SetBackgroundAlpha(alpha, silent)
   alpha = Clamp(alpha == nil and Style.DEFAULT_ALPHA or alpha, 0, 1)
   self._bgAlpha = alpha
   -- (17.10., Daniel: "an option to hide background and borders") with the chrome hidden everything of the window
   -- itself is drawn at 0; the opacity the player set stays stored for when it comes back
   if self._chromeHidden then
-    if self._look == "book" then BookAlpha(self, 0) else
+    if self._look == "don" then DonAlpha(self, 0, true)
+    elseif self._look == "book" then BookAlpha(self, 0) else
       if self._backdrop then
         Call(self, "SetBackdropColor", 0, 0, 0, 0)
         Call(self, "SetBackdropBorderColor", 0, 0, 0, 0)
@@ -1681,8 +1948,8 @@ function PanelMethods:SetBackgroundAlpha(alpha, silent)
     if not silent then Put(self, "alpha", alpha) end
     return self
   end
-  if self._look == "book" then
-    BookAlpha(self, alpha)
+  if self._look == "book" or self._look == "don" then
+    if self._look == "don" then DonAlpha(self, alpha) else BookAlpha(self, alpha) end
     if not silent then Put(self, "alpha", alpha) end
     return self
   end
@@ -1714,6 +1981,19 @@ local function PlainFont(fs, on)
     if not flags:find("OUTLINE", 1, true) then
       fs._plainFlags = flags
       pcall(fs.SetFont, fs, path, size, flags ~= "" and (flags .. ",OUTLINE") or "OUTLINE")
+      -- (minor 9, Daniel 02.11.2026: "..." where the level stood) the outline makes a text wider: one that FitText sized to
+      -- fit exactly (not cut) gets its natural width again, else the game cuts it to "..."
+      -- (minor 13, 03.11.2026, Daniel: "learn skills ist über den rand") but never wider than the room it was fitted to:
+      -- wider than that, the game cuts it to "..." and the whole text goes to the tooltip
+      if fs._fitKey and not fs._fitFull then
+        Call(fs, "SetWidth", 0)
+        local b, w = fs._fitBudget, NaturalWidth(fs)
+        if b and w and w > b + 0.5 then
+          Call(fs, "SetWidth", b)
+          local okT, t = pcall(fs.GetText, fs)
+          if okT and type(t) == "string" and t ~= "" then fs._fitFull = t end
+        elseif b and w then Call(fs, "SetWidth", min(b, ceil(w) + 1)) end
+      end
     end
     Call(fs, "SetShadowColor", 0, 0, 0, 1)
     Call(fs, "SetShadowOffset", 1, -1)
@@ -1766,6 +2046,7 @@ function PanelMethods:SetChromeHidden(hidden)
   -- and gradient and the active row's highlight are shown and hidden here, not only faded
   local show = not self._chromeHidden
   for _, t in ipairs(self._bookLines or {}) do Call(t, show and "Show" or "Hide") end
+  for _, t in ipairs(self._donLines or {}) do Call(t, show and "Show" or "Hide") end
   if self._bookBg then Call(self._bookBg, show and "Show" or "Hide") end
   for _, item in ipairs(self._items or {}) do
     if item._active and item.activeBg then
@@ -1783,11 +2064,110 @@ function PanelMethods:SetGrip(grip)
 end
 function PanelMethods:IsChromeHidden() return self._chromeHidden == true end
 
+-- (minor 7) the panel keeps this height (nil: as high as its content); a content with opts.fill takes the rest
+function PanelMethods:SetFixedHeight(h)
+  h = tonumber(h)
+  self._fixedHeight = h and max((self._headerH or S.header) + 20, floor(h)) or nil
+  self._retries = 0
+  Style.Relayout(self)
+  return self
+end
+function PanelMethods:GetFixedHeight() return self._fixedHeight end
+
+-- (minor 7) the header's buttons right to left; a button with minWidth only while the panel is that wide
+function Style.PlaceButtons(p, width)
+  local key = ""
+  for _, b in ipairs(p._buttons or {}) do key = key .. ((b._minWidth and width < b._minWidth) and "0" or "1") end
+  if key == p._buttonKey then return end
+  p._buttonKey = key
+  local anchor
+  for _, b in ipairs(p._buttons or {}) do
+    if b._minWidth and width < b._minWidth then
+      b:Hide()
+    else
+      b:Show()
+      b:ClearAllPoints()
+      if anchor then b:SetPoint("RIGHT", anchor, "LEFT", -S.buttonGap, 0)
+      else b:SetPoint("RIGHT", p._header, "RIGHT", -S.buttonRight, 0) end
+      anchor = b
+    end
+  end
+  local title = p._title
+  if title then
+    title:ClearAllPoints()
+    title:SetPoint("LEFT", p._header, "LEFT", p._titleX or S.titleX, 0)
+    if anchor then title:SetPoint("RIGHT", anchor, "LEFT", -S.buttonGap, 0)
+    else title:SetPoint("RIGHT", p._header, "RIGHT", -S.titleX, 0) end
+  end
+end
+
 function PanelMethods:SetPanelWidth(width)
   self._width = max(S.minWidth, floor(tonumber(width) or S.minWidth))
   self._retries = 0
   Style.Relayout(self)
   return self
+end
+
+-- (minor 10, 02.11.2026, Dropdon step 4; the panel grip of Geardon's BAUSTEINE.md) a grip at the bottom right that drags the
+-- panel's width between opts.min and opts.max; the top left corner stays. The width is kept through the panel's get/set
+-- as "width". Style.WidthGrip(panel, { min, max, tooltip = { title, lines, hint }, onWidth = fn(width) }) -> grip
+function Style.WidthGrip(p, opts)
+  if p._widthGrip then return p._widthGrip end
+  opts = opts or {}
+  local lo = max(S.minWidth, tonumber(opts.min) or S.minWidth)
+  local hi = max(lo, tonumber(opts.max) or 600)
+  local function Clamp(w) return max(lo, min(hi, floor((tonumber(w) or lo) + 0.5))) end
+  local function Width(w)
+    w = Clamp(w)
+    if w == p._width then return end
+    p:SetPanelWidth(w)
+    if type(opts.onWidth) == "function" then pcall(opts.onWidth, w) end
+  end
+  local saved = tonumber(Get(p, "width"))
+  if saved then Width(saved) end
+  local function CursorX()
+    local ok, x = pcall(GetCursorPosition)
+    local _, s = Call(p, "GetEffectiveScale")
+    return (ok and tonumber(x) or 0) / ((tonumber(s) and s > 0) and s or 1)
+  end
+  local b = CreateFrame("Button", nil, p)
+  b:SetSize(16, 16)
+  b:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -3, 3)
+  local _, lvl = Call(p, "GetFrameLevel")
+  Call(b, "SetFrameLevel", (tonumber(lvl) or 1) + 30)
+  Call(b, "SetNormalTexture", "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+  Call(b, "SetHighlightTexture", "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+  Call(b, "SetPushedTexture", "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+  Call(b, "EnableMouse", true)
+  b:SetScript("OnEnter", function(self)
+    local t = opts.tooltip
+    if type(t) == "table" and Style.Tooltip then Style.Tooltip(self, t[1], t[2], t[3]) end
+  end)
+  b:SetScript("OnLeave", function(self) if Style.HideTooltip then Style.HideTooltip(self) end end)
+  b:SetScript("OnMouseDown", function(self)
+    if p._locked then return end
+    local okL, l = Call(p, "GetLeft")
+    local okT, t = Call(p, "GetTop")
+    if okL and okT and l and t then
+      p:ClearAllPoints()
+      p:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
+      SavePosition(p)
+    end
+    self._drag = { x = CursorX(), w = p._width or lo }
+    self:SetScript("OnUpdate", function()
+      local d = self._drag
+      if d then Width(d.w + CursorX() - d.x) end
+    end)
+  end)
+  b:SetScript("OnMouseUp", function(self)
+    self:SetScript("OnUpdate", nil)
+    if self._drag then Put(p, "width", p._width) end
+    self._drag = nil
+  end)
+  b.SetPanelWidth = function(_, w) Width(w) Put(p, "width", p._width) end -- (tests and commands)
+  p._widthGrip = b
+  p:SetGrip(b)
+  return b
 end
 
 function PanelMethods:SetCollapsed(collapsed, silent)
@@ -1894,12 +2274,13 @@ function Style.Panel(name, parent, opts)
   local p = CreateFrame("Frame", name, parent or UIParent, template)
   p._isStylePanel = true
   p._opts = opts
-  p._look = opts.look == "book" and "book" or nil
+  p._look = (opts.look == "book" or opts.look == "don") and opts.look or nil
+  p._headerH = p._look == "don" and Style.DON_HEADER or S.header
   p._items, p._order = {}, {}
   p._collapseKeep = max(0, floor(tonumber(opts.collapseKeep) or 0))
   p._width = max(S.minWidth, floor(tonumber(opts.width) or S.minWidth))
   p:SetWidth(p._width)
-  p:SetHeight(S.header + 2 * S.padY)
+  p:SetHeight(p._headerH + 2 * S.padY)
   Call(p, "SetFrameStrata", opts.strata or "MEDIUM")
   -- Above action bar addons in the same strata (Bartender4 bars sit at
   -- level 5, its art up to 52): a faded-out bar is invisible but still takes
@@ -1927,7 +2308,7 @@ function Style.Panel(name, parent, opts)
   p._header, p.header = header, header
   header:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
   header:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, 0)
-  header:SetHeight(S.header)
+  header:SetHeight(p._headerH)
   header:EnableMouse(true)
   header:RegisterForDrag("LeftButton")
   p._headerBg = Flat(header, "BACKGROUND", "header", Style.DEFAULT_ALPHA, 1)
@@ -1960,8 +2341,10 @@ function Style.Panel(name, parent, opts)
 
   -- Header buttons, right to left
   local anchor, buttons = nil, {}
-  local function AddButton(kind, onClick, tooltip, hint)
+  local function AddButton(kind, onClick, tooltip, hint, minWidth)
     local b = Style.IconButton(header, kind)
+    -- (minor 7) minWidth: the button stands up top only while the panel is at least that wide (Panel.PlaceButtons)
+    if minWidth then b._minWidth = tonumber(minWidth) p._narrowButtons = true end
     if anchor then
       b:SetPoint("RIGHT", anchor, "LEFT", -S.buttonGap, 0)
     else
@@ -1995,18 +2378,54 @@ function Style.Panel(name, parent, opts)
     end, opts.collapseTooltip)
   end
   for _, def in ipairs(type(opts.buttons) == "table" and opts.buttons or {}) do
-    local b = AddButton(def.kind or def[1], def.onClick, def.tooltip, def.hint)
+    -- (01.11.2026, Daniel: "Alles was überall gleich sein kann, sollten die addons aus dem gleichen kit ziehen")
+    -- donOptions = "<Addon>": the cog of DonCore's one options window; symbol, click and tooltip come from there
+    local onClick, tooltip, kind = def.onClick, def.tooltip, def.kind or def[1]
+    if def.donOptions then
+      local Core = LibStub and LibStub("DonCore-1.0", true)
+      local Opt = Core and Core.Get and Core:Get("Options", 1)
+      kind = kind or "options"
+      if Opt then
+        local id = def.donOptions
+        onClick = function() Opt.Open(id) end
+        tooltip = tooltip or { Opt.Label("Options"), nil, def.hint }
+      end
+    end
+    local b = AddButton(kind, onClick, tooltip, def.hint, def.minWidth)
+    if def.donOptions then b.donOptionsId, b.donKind = def.donOptions, "options" end
     if def.key then p["_button_" .. def.key] = b end
   end
   p._buttons = buttons
 
   local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   if not title:GetFontObject() and GameFontNormal then Call(title, "SetFontObject", GameFontNormal) end
-  local tc = p._look == "book" and BOOK.textPrimary or COLORS.textPrimary
+  local tc = p._look == "book" and BOOK.textPrimary or p._look == "don" and DON.hero or COLORS.textPrimary
   title:SetTextColor(tc[1], tc[2], tc[3], 1)
   title:SetJustifyH("LEFT")
   Call(title, "SetWordWrap", false)
-  title:SetPoint("LEFT", header, "LEFT", S.titleX, 0)
+  local titleX = S.titleX
+  if p._look == "don" and opts.logo then
+    -- (v4) the addon's mark in a gold square left of the title (18 px)
+    local logo = header:CreateTexture(nil, "ARTWORK")
+    logo:SetSize(16, 16)
+    logo:SetPoint("LEFT", header, "LEFT", S.titleX + 1, 0)
+    if logo:SetTexture(opts.logo) == false then logo:Hide() end
+    Call(logo, "SetTexCoord", 0.07, 0.93, 0.07, 0.93)
+    p._logo = logo
+    p._logoEdge = {}
+    for i = 1, 4 do
+      local t = header:CreateTexture(nil, "OVERLAY")
+      t:SetTexture(WHITE)
+      if i == 1 then t:SetPoint("TOPLEFT", logo, "TOPLEFT", -1, 1) t:SetPoint("TOPRIGHT", logo, "TOPRIGHT", 1, 1) t:SetHeight(1)
+      elseif i == 2 then t:SetPoint("BOTTOMLEFT", logo, "BOTTOMLEFT", -1, -1) t:SetPoint("BOTTOMRIGHT", logo, "BOTTOMRIGHT", 1, -1) t:SetHeight(1)
+      elseif i == 3 then t:SetPoint("TOPLEFT", logo, "TOPLEFT", -1, 1) t:SetPoint("BOTTOMLEFT", logo, "BOTTOMLEFT", -1, -1) t:SetWidth(1)
+      else t:SetPoint("TOPRIGHT", logo, "TOPRIGHT", 1, 1) t:SetPoint("BOTTOMRIGHT", logo, "BOTTOMRIGHT", 1, -1) t:SetWidth(1) end
+      p._logoEdge[i] = t
+    end
+    titleX = S.titleX + 16 + 8
+  end
+  title:SetPoint("LEFT", header, "LEFT", titleX, 0)
+  p._titleX = titleX
   if anchor then
     title:SetPoint("RIGHT", anchor, "LEFT", -S.buttonGap, 0)
   else
@@ -2016,8 +2435,8 @@ function Style.Panel(name, parent, opts)
 
   local body = CreateFrame("Frame", nil, p)
   p._body, p.body = body, body
-  body:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -S.header)
-  body:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, -S.header)
+  body:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -p._headerH)
+  body:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, -p._headerH)
   body:SetHeight(1)
   body:EnableMouse(false)
 
@@ -2039,6 +2458,21 @@ function Style.Panel(name, parent, opts)
     p._divider:SetHeight(px)
   end
 
+  if p._look == "don" then
+    -- (v4) the Don frame: a gold line one pixel inside the black outer line
+    p._donLines = {}
+    for i = 1, 4 do
+      local t = p:CreateTexture(nil, "BORDER")
+      t:SetTexture(WHITE)
+      if i == 1 then t:SetPoint("TOPLEFT", p, "TOPLEFT", 1, -1) t:SetPoint("TOPRIGHT", p, "TOPRIGHT", -1, -1) t:SetHeight(1)
+      elseif i == 2 then t:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 1, 1) t:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -1, 1) t:SetHeight(1)
+      elseif i == 3 then t:SetPoint("TOPLEFT", p, "TOPLEFT", 1, -1) t:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 1, 1) t:SetWidth(1)
+      else t:SetPoint("TOPRIGHT", p, "TOPRIGHT", -1, -1) t:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -1, 1) t:SetWidth(1) end
+      p._donLines[i] = t
+    end
+    local okF, path = pcall(title.GetFont, title)
+    if okF and path then pcall(title.SetFont, title, path, 12, "") end
+  end
   if p._look == "book" then
     -- (v3) the quest book's frame: a gradient, a gold line with a dark and a faint inner line, the
     -- header's gold underline and the corner ornaments (opts.media: the addon's Media folder)

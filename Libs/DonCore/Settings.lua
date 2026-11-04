@@ -1,5 +1,12 @@
-local M = LibStub("DonCore-1.0"):NewModule("Settings", 1)
+local M = LibStub("DonCore-1.0"):NewModule("Settings", 2)
 if not M then return end
+local Core = LibStub("DonCore-1.0")
+
+-- (minor 2, 01.11.2026, STYLEKIT_PLAN.md "Schritt 3") with DonCore's Options module loaded (Libs\DonCore\Options.lua)
+-- ns.BuildSettings(spec) puts the same pages into the one options window of all Don addons (Options.FromSettings) and
+-- Blizzard's AddOns list keeps one page per addon: the status and a button that opens the window. spec.ownWindow = true:
+-- the addon registers its tabs itself (Questdon, Leveldon, Luredon, Golddon), only the short page here. Without the
+-- Options module the pages are built as before. ns.OpenDonOptions(tab) opens the window at the addon.
 
 ---------------------------------------------------------------------------
 -- DonCore module "Settings" (minor 1, 30.10.2026, DONCORE_PLAN.md step 2).
@@ -147,7 +154,36 @@ function M:Attach(addonName, ns)
     end
   end
 
+  function ns.OpenDonOptions(tab)
+    local Opt = Core:Get("Options", 1)
+    if Opt and Opt.addons[ns.donOptionsId or addonName] then return Opt.Open(ns.donOptionsId or addonName, tab) end
+  end
+
   function ns.BuildSettings(spec)
+    local Opt = Core:Get("Options", 1)
+    if Opt then
+      ns.donOptionsId = spec.name
+      if not spec.ownWindow then Opt.FromSettings(spec, ns) end
+      if not Available() then return nil end
+      local main = Settings.RegisterVerticalLayoutCategory(spec.name)
+      local status = spec.status and spec.status() or {}
+      if CreateSettingsListSectionHeaderInitializer then
+        if #status > 0 then
+          Settings.RegisterInitializer(main, CreateSettingsListSectionHeaderInitializer(L("Status")))
+          for _, line in ipairs(status) do
+            Settings.RegisterInitializer(main, CreateSettingsListSectionHeaderInitializer("|cffcccccc" .. line .. "|r"))
+          end
+        end
+        Settings.RegisterInitializer(main, CreateSettingsListSectionHeaderInitializer(L("Settings")))
+      end
+      if CreateSettingsButtonInitializer then
+        Settings.RegisterInitializer(main, CreateSettingsButtonInitializer(L("Options"), L("Open"), Guard("options", function()
+          Opt.OpenFromBlizzard(spec.name)
+        end), nil, false))
+      end
+      Settings.RegisterAddOnCategory(main)
+      return main
+    end
     if not Available() then return nil end
     local main = Settings.RegisterVerticalLayoutCategory(spec.name)
 

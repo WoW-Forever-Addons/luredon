@@ -26,7 +26,9 @@ local L = ns.L
 -- second, the pointer follows the mouse every frame.
 ---------------------------------------------------------------------------
 local MEDIA = "Interface\\AddOns\\Luredon\\Media\\"
-local ICON = 40            -- pointer bobber, px (09.10.: bigger, right of the gear)
+local ICON = 24            -- pointer bobber in UI units (09.10.: 40, "bigger, right of the gear"; 04.11.2026, Era-Test,
+                           -- Daniel: "der bobber ist sehr sehr groß": 24, it takes the UI scale in Follow)
+ns.BOBBER_POINTER_SIZE = ICON -- (tests)
 local ENDING = 5           -- seconds before the line comes in: amber
 local RESULT_TIME = 1.2    -- green or red, then fade out
 local FADE = 0.15

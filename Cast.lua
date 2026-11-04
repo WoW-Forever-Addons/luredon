@@ -111,17 +111,20 @@ end
 -- 1.16: the 3 s lure check only runs with a pole in hand, Fishing learned and "Apply lure
 -- first" on; it is the only thing that changes by itself (lures expire silently).
 local lureTicker
+-- (04.11.2026, Era-Test) the ticker also runs for the interact key (it notices mounting, swimming and closed windows);
+-- the return value still only tells whether a lure is wanted.
 local function UpdateLureTicker()
-  local active = ns.db.autoLure and ns.HasPole() and ns.KnowsFishing() and true or false
-  if lureTicker then lureTicker:SetActive(active) end
-  return active
+  local ready = (ns.db.autoLure or ns.db.interactCast) and ns.HasPole() and ns.KnowsFishing() and true or false
+  local active = ns.db.autoLure and ready or false
+  if lureTicker then lureTicker:SetActive(ready) end
+  return active, ready
 end
 function ns.LureTicking() return lureTicker ~= nil and lureTicker:IsActive() end
 
 -- Decide what the next click does and put it on the secure button.
 -- Secure attributes can only change out of combat.
 local function Prepare()
-  local lureCheck = UpdateLureTicker() -- the same test decides whether a lure is wanted
+  local lureCheck, ready = UpdateLureTicker() -- the same test decides whether a lure is wanted
   if not button or InCombatLockdown() then return end
   local lure, waiting
   ns.lureRenewSkipped = nil
@@ -157,6 +160,7 @@ local function Prepare()
   SetAttr("target-slot", lure and INVSLOT_MAIN or nil)
   -- Localized name, or the spell ID when the client gives no readable name (1.14).
   SetAttr("spell", ns.FishingCastSpell())
+  ns.UpdateInteractKey(ready)
 end
 
 local queued = false
@@ -237,6 +241,103 @@ function ns.CastPauseReason()
   return ok and reason or nil
 end
 
+---------------------------------------------------------------------------
+-- (04.11.2026, Era-Test) The interact key casts too (Daniel: "standardmäßig soll alles mit Doppelrechtsklick oder mit
+-- der Interaktionstaste gehen"). While a pole is in hand, Fishing is known, no line is out and nothing is in the way,
+-- the key(s) of INTERACTTARGET click LuredonCastButton (lure if needed, else cast) through an override binding of its
+-- own owner (Disarm only clears the right button's). Once the line is out the override goes, so the same key hooks
+-- the bobber (with the longer range of softInteract). With the pole in hand the key would no longer talk to NPCs or
+-- loot, so the override also goes while there is a soft interact target (NPC, object, corpse) or a window that came
+-- from interacting (loot, vendor, gossip, quest, ...) or the key bindings are open. Bindings only change out of
+-- combat: the override goes at PLAYER_REGEN_DISABLED (before the lockdown) and comes back after the fight.
+-- The keys are read only while no override is on (GetBindingKey may report the override's keys differently), so a
+-- new binding counts once the key bindings window is closed again.
+---------------------------------------------------------------------------
+local INTERACT_QUIET = 1 -- s after the line came in: the hooking press (and its release) stays the game's
+local BUSY_FRAMES = { "LootFrame", "MerchantFrame", "GossipFrame", "QuestFrame", "TaxiFrame", "BankFrame", "TradeFrame",
+  "MailFrame", "ClassTrainerFrame", "AuctionFrame", "KeyBindingFrame", "SettingsPanel", "GameMenuFrame" }
+local interactOwner
+local interactOn = false
+local interactKeys = {}
+local interactState = "off"
+local lineOut = false
+local interactQuietUntil = 0
+
+local function InteractKeys()
+  if not GetBindingKey then return nil end
+  local ok, k1, k2 = pcall(GetBindingKey, "INTERACTTARGET")
+  if not ok then return nil end
+  if not (ns.Usable(k1) and type(k1) == "string" and k1 ~= "") then k1 = nil end
+  if not (ns.Usable(k2) and type(k2) == "string" and k2 ~= "") then k2 = nil end
+  if not k1 then k1, k2 = k2, nil end
+  return k1, k2
+end
+
+local function BusyWindow()
+  for _, name in ipairs(BUSY_FRAMES) do
+    local f = rawget(_G, name)
+    if type(f) == "table" and f.IsShown then
+      local ok, v = pcall(f.IsShown, f)
+      if ok and v == true then return name end
+    end
+  end
+end
+
+-- ready: from Prepare (pole in hand and Fishing known, already asked there), nil: ask here.
+local function InteractReason(ready)
+  if not ns.db.interactCast then return "off" end
+  if ns.conflict then return "conflict" end
+  local blocked
+  if ready == nil then blocked = BlockReason() else blocked = PauseReason() or (not ready and "no-pole") end
+  if blocked then return blocked end
+  if lineOut then return "line-out" end
+  if GetTime() < interactQuietUntil then return "line-in" end
+  if Flag(UnitExists, "softinteract") then return "soft-target" end
+  if BusyWindow() then return "window" end
+end
+
+local function InteractRelease()
+  if interactOn and interactOwner then
+    ClearOverrideBindings(interactOwner)
+    interactOn = false
+    interactKeys[1], interactKeys[2] = nil, nil
+  end
+end
+
+-- Puts the interact key on Luredon's button or gives it back to the game (only out of combat).
+function ns.UpdateInteractKey(ready)
+  if not interactOwner or not button or InCombatLockdown() then return end
+  -- without a key (or with the option off) nothing else needs asking
+  local k1, k2
+  if not interactOn then
+    if not ns.db.interactCast then interactState = "off" return end
+    k1, k2 = InteractKeys()
+    if not k1 then interactState = "no-key" return end
+  end
+  local reason = InteractReason(ready)
+  if reason then
+    interactState = reason
+    InteractRelease()
+    return
+  end
+  if interactOn then interactState = "on" return end
+  SetOverrideBindingClick(interactOwner, false, k1, button:GetName())
+  if k2 then SetOverrideBindingClick(interactOwner, false, k2, button:GetName()) end
+  interactOn, interactKeys[1], interactKeys[2] = true, k1, k2
+  interactState = "on"
+end
+
+-- (04.11.2026, Era-Test) the first interact key for the introduction (Intro.lua): the one on the button, else the binding.
+function ns.InteractKeyName()
+  if interactOn and interactKeys[1] then return interactKeys[1] end
+  return (InteractKeys())
+end
+
+-- For /ld diag and the tests.
+function ns.InteractKeyState()
+  return { on = interactOn, state = interactState, key1 = interactKeys[1], key2 = interactKeys[2] }
+end
+
 -- The override must never outlive the click: PostClick clears it, combat start
 -- clears it, and as a last resort a timer does.
 local armed = 0
@@ -251,8 +352,32 @@ end
 -- When the line came in (bobber clicked, fish got away, cast ended).
 local lineInAt = 0
 ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_STOP", function(_, _, _, spellID)
-  if ns.IsFishingSpell(spellID) then lineInAt = GetTime() end
+  if ns.IsFishingSpell(spellID) then
+    lineInAt = GetTime()
+    -- (04.11.2026, Era-Test) the interact key comes back to Luredon a moment after the line came in
+    lineOut = false
+    interactQuietUntil = lineInAt + INTERACT_QUIET
+    C_Timer.After(INTERACT_QUIET + 0.1, QueuePrepare)
+  end
 end)
+-- (04.11.2026, Era-Test) line out: the interact key is the game's (it hooks the bobber)
+ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_START", function(_, _, _, spellID)
+  if ns.IsFishingSpell(spellID) then
+    lineOut = true
+    ns.UpdateInteractKey()
+  end
+end)
+-- (04.11.2026, Era-Test) at once (not queued): a soft interact target or a window takes the key back right away
+local function InteractNow() ns.UpdateInteractKey() end
+for _, event in ipairs({ "PLAYER_SOFT_INTERACT_CHANGED", "LOOT_OPENED", "MERCHANT_SHOW", "GOSSIP_SHOW", "QUEST_DETAIL",
+  "QUEST_GREETING", "QUEST_PROGRESS", "QUEST_COMPLETE", "TAXIMAP_OPENED", "BANKFRAME_OPENED", "TRADE_SHOW", "MAIL_SHOW",
+  "TRAINER_SHOW", "AUCTION_HOUSE_SHOW", "PLAYER_MOUNT_DISPLAY_CHANGED" }) do
+  ns.On(event, InteractNow)
+end
+for _, event in ipairs({ "LOOT_CLOSED", "MERCHANT_CLOSED", "GOSSIP_CLOSED", "QUEST_FINISHED", "TAXIMAP_CLOSED",
+  "BANKFRAME_CLOSED", "TRADE_CLOSED", "MAIL_CLOSED", "TRAINER_CLOSED", "AUCTION_HOUSE_CLOSED" }) do
+  ns.On(event, function() QueuePrepare() end)
+end
 
 local lastClick, lastAnyClick
 local lastUnitClick -- 1.16: last right-click on a unit (NPC, mob, corpse, player)
@@ -335,7 +460,17 @@ end
 
 ns.OnInit(function()
   button = CreateFrame("Button", "LuredonCastButton", UIParent, "SecureActionButtonTemplate")
+  interactOwner = CreateFrame("Frame", "LuredonInteractOwner", UIParent) -- (04.11.2026, Era-Test) owner of the interact key
   SetupButton()
+  -- (04.11.2026, Era-Test) the interact key and the key binding click without a double-click before: decide with fresh
+  -- bag data right before the action (out of combat attributes may change here; the action follows the release)
+  button:SetScript("PreClick", function(_, _, down)
+    if down or InCombatLockdown() then return end
+    ns.Call("preclick", function()
+      if ns.InvalidateLureCache then ns.InvalidateLureCache() end
+      Prepare()
+    end)
+  end)
   button:SetScript("PostClick", function(self, _, down)
     if not down and not InCombatLockdown() then
       ns.Call("postclick", function()
@@ -383,6 +518,11 @@ end)
 ns.On("PLAYER_REGEN_DISABLED", function()
   if overrideActive then ns.Decide(InCombatLockdown() and "combat-locked" or "combat-disarm") end
   Disarm()
+  -- (04.11.2026, Era-Test) in combat the interact key is the game's again
+  if not InCombatLockdown() then
+    InteractRelease()
+    if interactOwner then interactState = "combat" end
+  end
 end)
 -- Fallback in case combat started anyway between press and release.
 ns.On("PLAYER_REGEN_ENABLED", function()
@@ -414,6 +554,7 @@ local function WorldChanged(event)
   if overrideActive then ns.Decide("loading-disarm", nil, event) end
   Disarm()
   ForgetClicks()
+  lineOut = false -- (04.11.2026, Era-Test) a loading screen ends the line (no CHANNEL_STOP may come)
   if lureClickAt then ForgetLureClick() end
   QueuePrepare()
 end
@@ -447,6 +588,7 @@ function ns.CastState()
     appliedPole = appliedPole,
     renewSkipped = ns.lureRenewSkipped,
     lineInAgo = lineInAt > 0 and now - lineInAt or nil,
+    interact = interactState, -- (04.11.2026, Era-Test) "on" or why the interact key is the game's
   }
 end
 

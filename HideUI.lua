@@ -20,7 +20,7 @@ local Style = ns.Style
 -- WorldFrame, the one part of the screen that stays when the interface is hidden.
 ---------------------------------------------------------------------------
 local TICKER_LINES, TICKER_HOLD, TICKER_FADE = 3, 4, 1.2
-local ASK_SCALE = 1.5 -- the question asked once: large enough to read at a glance
+-- (04.11.2026, Era-Test, Daniel: "schon seeehr groß") the question has the size of every Kit window: ASK_SCALE 1.5 is gone
 
 local hidden = false
 local hiddenAt = 0 -- (1.4.1) when Luredon hid the interface (GetTime)
@@ -429,53 +429,58 @@ function ns.LuredonCastbar() return castbar end -- (tests)
 -- change it any time.
 ---------------------------------------------------------------------------
 local askPanel
+local answered -- the question got its answer while shown (closing it then is no second answer)
 local function Answer(yes)
+  answered = true
   ns.db.hideUI = yes and true or false
   ns.db.askedHideUI = true
-  if askPanel then askPanel:Hide() end
+  if askPanel and askPanel:IsShown() then askPanel:Hide() end
   ns.Print(yes and L["The interface hides while your line is out. Change it under /ld options."]
     or L["The interface stays while you fish. You can switch hiding on under /ld options."])
   if yes then ns.MaybeAutoLootHint() end
 end
 ns.AnswerHideUI = Answer -- (tests)
 
+-- (02.11.2026, StyleKit 2 step 4) the question is a dialog of DonCore's Kit: three lines, the two answers as buttons one
+-- under the other over the whole width (long languages fit), "yes" the gold one; Esc or the close button answer "no".
+local ASK_W = 380
 function ns.MaybeAskHideUI()
   if not ns.db or ns.db.askedHideUI or ns.db.hideUI then return false end
   if InCombatLockdown and InCombatLockdown() then return false end
-  if not (Style and Style.Panel and Style.Row) then return false end
+  local Kit = LibStub("DonCore-1.0"):Get("Kit", 11)
+  if not Kit then return false end
   if not askPanel then
-    askPanel = Style.Panel("LuredonAskHideUI", UIParent, {
-      title = Style.Wordmark and Style.Wordmark("Lure", "don") or "Luredon",
-      width = 380, close = true, strata = "DIALOG",
-      look = "book", media = "Interface\\AddOns\\Luredon\\Media\\", -- (1.5.0) the look of the other windows
-      defaultPoint = { "CENTER", "CENTER", 0, 60 },
-      get = function() return nil end, set = function() end,
-      onClose = function() Answer(false) end,
-    })
-    for i, line in ipairs({ { L["Hide the interface while fishing?"], "textPrimary" },
-        { L["Your catches show at the top of the screen."], "textSecondary" },
-        { L["Moving or a fight brings it back."], "textSecondary" } }) do
-      local r = Style.Row(askPanel)
-      r:SetText(line[1], line[2])
-      if i == 1 then r:SetGapBefore(0) end
+    local KC, S = Kit.C, Kit.SIZE
+    askPanel = Kit.Dialog("LuredonAskHideUI", { title = "Luredon", icon = "Interface\\Icons\\Trade_Fishing", width = ASK_W,
+      onClose = function() if not answered then Answer(false) end end })
+    local body = askPanel.body
+    local bw = ASK_W - 2 * S.pad
+    askPanel.lines = {}
+    local y = 0
+    for i, line in ipairs({ { L["Hide the interface while fishing?"], KC.title, "row" },
+        { L["Your catches show at the top of the screen."], KC.muted, "sub" },
+        { L["Moving or a fight brings it back."], KC.muted, "sub" } }) do
+      local fs = Kit.Text(body, line[3], line[2])
+      fs:SetPoint("TOPLEFT", body, "TOPLEFT", 0, -y)
+      fs:SetText(line[1])
+      Kit.Fit(fs, bw)
+      askPanel.lines[i] = fs
+      y = y + (i == 1 and 22 or 18)
     end
-    local yes = Style.Row(askPanel)
-    yes:SetText(L["Yes, hide it while fishing"], "accent")
-    yes:SetOnClick(function() Answer(true) end)
-    local no = Style.Row(askPanel)
-    no:SetText(L["No, keep the interface"], "textSecondary")
-    no:SetOnClick(function() Answer(false) end)
-    -- (1.5.0) the two answers are buttons, not plain lines
-    if ns.UI and ns.UI.ButtonRow then
-      yes:SetGapBefore(Style.SPACING.section)
-      ns.UI.ButtonRow(yes) ns.UI.ButtonRow(no)
-    end
+    y = y + S.gap
+    local yes = Kit.Button(body, L["Yes, hide it while fishing"], { kind = "primary", onClick = function() Answer(true) end })
+    yes:SetPoint("TOPLEFT", body, "TOPLEFT", 0, -y)
+    yes:Layout(bw)
+    y = y + S.button + S.unit
+    local no = Kit.Button(body, L["No, keep the interface"], { onClick = function() Answer(false) end })
+    no:SetPoint("TOPLEFT", body, "TOPLEFT", 0, -y)
+    no:Layout(bw)
+    y = y + S.button
+    askPanel:SetBodySize(bw, y)
     askPanel.yes, askPanel.no = yes, no -- (tests)
   end
-  -- (Daniel 08.10.: "hardly readable") a question asked once may be large
-  if askPanel.SetPanelScale then askPanel:SetPanelScale(ASK_SCALE, true) end
+  answered = false
   askPanel:Show()
-  if Style.Relayout then Style.Relayout(askPanel) end
   return true
 end
 

@@ -191,6 +191,10 @@ local function Binding(out)
     Show(s.nextAction), s.nextLure and (" item:" .. s.nextLure) or "", s.lureWait or 0, Show(s.lureCasting or false),
     s.appliedLure and ("item:" .. s.appliedLure) or "none", Show(s.renewSkipped or false),
     s.lineInAgo and ("%.1fs ago"):format(s.lineInAgo) or "never")
+  -- (04.11.2026, Era-Test) the interact key: option, state ("on" or why it is the game's), keys
+  local ik = ns.InteractKeyState and ns.InteractKeyState() or {}
+  out[#out + 1] = ("interact key: option %s, state %s, keys %s"):format(Show(ns.db.interactCast), Show(ik.state),
+    ik.key1 and (ik.key1 .. (ik.key2 and (", " .. ik.key2) or "")) or "none")
 end
 
 local function Sounds(out)

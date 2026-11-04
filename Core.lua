@@ -1,5 +1,8 @@
 local addonName, ns = ...
 local L = ns.L
+-- (31.10.2026, DONCORE_PLAN.md) Luredon's own view of DonCore's Style (Libs\DonCore\Style.lua); (02.11.2026, StyleKit 2
+-- step 4) the windows take their parts from DonCore's Kit, Luredon's own Kit.lua (own colours, PAL, button painters) is gone
+ns.Style = LibStub("DonCore-1.0"):Get("Style", 4):ForAddon()
 
 ns.defaults = {
   easyCast = true,
@@ -7,10 +10,12 @@ ns.defaults = {
   lureWarning = true,
   bagWarning = true,
   sounds = true,
-  softInteract = false,
+  softInteract = true,  -- (04.11.2026, Era-Test, Daniel: "longer interact range while fishing an") on from the start
+  interactCast = true,  -- (04.11.2026, Era-Test) the interact key casts and applies the lure too (Cast.lua)
   bobberCursor = true,  -- (1.4.1) small bobber at the pointer while the mouse is on the bobber
   findFish = true,
   showPanel = true,
+  minimapButton = true, -- (04.11.2026, Era-Test) the minimap button (MinimapButton.lua); minimapAngle nil: 150
   panelOnlyWithPole = true,
   derby = true,
   sessionSummary = true,
@@ -18,6 +23,7 @@ ns.defaults = {
   fishingSet = "",
   normalSet = "",
   panelPos = nil,
+  panelWidth = nil,      -- (04.11.2026, Era-Test) width of the small window from its grip (220 to 400; nil: 240)
   savedSounds = nil,
   savedSoft = nil,
   zones = {},
@@ -228,6 +234,13 @@ frame:SetScript("OnEvent", function(_, event, ...)
     if LuredonDB == nil and type(AngelKompassDB) == "table" then LuredonDB = AngelKompassDB end -- data from AngelKompass
     AngelKompassDB = nil
     LuredonDB = LuredonDB or {}
+    -- (04.11.2026, Era-Test) the longer interact range is on from the start now. Saved data stores every default, so the
+    -- old default (off) cannot be told apart from a player's choice: it is switched on once for everybody who has it
+    -- off, then the marker keeps a later "off" as the player set it.
+    if not LuredonDB.softOn1104 then
+      LuredonDB.softInteract = nil
+      LuredonDB.softOn1104 = true
+    end
     MergeDefaults(LuredonDB, ns.defaults)
     -- (1.4.1, Daniel 09.10.) the water rings around the bobber pointer are gone: drop their old setting
     LuredonDB.bobberRipples = nil
@@ -435,30 +448,5 @@ function Luredon_OnAddonCompartmentClick()
   if ns.OpenOptions then ns.Call("compartment", ns.OpenOptions) end
 end
 
--- 1.14: one short line on the very first login with Luredon (no fishing recorded yet).
--- Existing players with statistics never see it. With another fishing addon loaded the
--- double-click belongs to that addon, so the line is left out (Cast.lua says so already).
--- Returns true when the line was printed.
-function ns.MaybeWelcome()
-  if ns.db.welcomed then return false end
-  ns.db.welcomed = true
-  if ns.conflict or (ns.db.lifetime and (tonumber(ns.db.lifetime.casts) or 0) > 0) then return false end
-  -- 1.16: a character that certainly has not learned Fishing gets no line yet (it would ask
-  -- for a double-click that does nothing); it comes once Fishing is learned.
-  if ns.KnowsFishing and not ns.KnowsFishing() then
-    ns.db.welcomed = nil
-    return false
-  end
-  ns.Print(L["Ready. Equip a fishing pole and double right-click into the world: Luredon applies a lure if needed and casts. /ld help lists the commands."])
-  return true
-end
-local welcomeTried
-ns.On("PLAYER_ENTERING_WORLD", function()
-  if welcomeTried then return end
-  welcomeTried = true
-  ns.MaybeWelcome()
-end)
--- 1.16: Fishing learned at the trainer during this session: the line comes now.
-ns.On("SKILL_LINES_CHANGED", function()
-  if welcomeTried and not ns.db.welcomed then ns.MaybeWelcome() end
-end)
+-- 1.14 to 04.11.2026: one chat line at the first login (ns.MaybeWelcome). (04.11.2026, Era-Test, Daniel: "Ja, so
+-- einbauen") replaced by the introduction dialog at the first cast (Intro.lua); LuredonDB.welcomed stays unused.

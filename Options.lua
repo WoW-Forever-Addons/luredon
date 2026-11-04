@@ -36,6 +36,14 @@ local PAGES = {
   { title = "Casting and lures", tip = "Double-click casting, automatic lures and warnings.", items = {
     { header = "Casting" },
     { key = "easyCast", name = "Double right-click to fish", tip = "With a fishing pole equipped, double right-click into the world to cast. Also available as a key binding (Key Bindings > AddOns). Pauses in combat, while mounted, swimming or flying.", blockedBy = OtherFishingAddon },
+    -- (04.11.2026, Era-Test, Daniel: "standardmäßig soll alles mit Doppelrechtsklick oder mit der Interaktionstaste gehen")
+    { key = "interactCast", name = "Interact key casts", tip = "With a fishing pole equipped, the interact key applies a lure if needed and casts, like the double right-click. While the line is out the same key hooks the bobber. In combat, next to an NPC, object or corpse and while a loot, vendor or quest window is open the key keeps its usual meaning.", blockedBy = OtherFishingAddon, onChange = function()
+      if ns.QueuePrepare then ns.QueuePrepare() end
+    end },
+    -- (04.11.2026, Era-Test) the introduction of the first cast, shown again (Intro.lua)
+    { kind = "button", name = "Introduction", button = "Show", tip = "Shows the short introduction again: casting with the double right-click or the interact key, hooking with the interact key.", onClick = function()
+      if ns.ShowIntro then ns.ShowIntro() end
+    end },
     { key = "autoLure", name = "Apply lure first", tip = "If the pole has no lure, the click or key binding applies the best lure your skill allows. A lure of the same kind is renewed when it runs out within 20 seconds. The next click casts.", onChange = function()
       if ns.QueuePrepare then ns.QueuePrepare() end
     end },
@@ -98,6 +106,8 @@ local PAGES = {
     { key = "panelScale", kind = "slider", name = "Size", tip = "Size of the window.", min = 0.6, max = 1.6, step = 0.05, onChange = ApplyPanel },
     { key = "panelAlpha", kind = "slider", name = "Background opacity", tip = "How opaque the window background is. Text stays fully visible.", min = 0, max = 1, step = 0.05, onChange = ApplyPanel },
     { key = "combatFade", name = "Dim in combat", tip = "Dims the whole window to 40 % while you are in combat.", onChange = ApplyPanel },
+    -- (04.11.2026, Era-Test) the minimap button's switch, DonCore's item in the game's language (MinimapButton.lua)
+    ns.MinimapOption(),
     -- 1.15: same place as in the other addons (DESIGN.md); the start page keeps its tool.
     { kind = "button", name = "Reset position", button = "Reset", tip = "Puts the window back to its default place.", onClick = function()
       if ns.ResetPanelPosition then ns.ResetPanelPosition() end
@@ -155,10 +165,6 @@ for _, page in ipairs(PAGES) do
 end
 for _, t in ipairs(TOOLS) do t[3] = ns.Safe("tool " .. t[1], t[3]) end
 
-local function Build()
-  category = ns.BuildSettings({ name = "Luredon", status = Status, tools = TOOLS, pages = PAGES })
-end
-
 -- 1.14: /ld help, one short line per command.
 local HELP = {
   { "/ld", L["show / hide the window"] },
@@ -183,7 +189,115 @@ function ns.PrintHelp()
   end
 end
 
-function ns.OpenOptions()
+---------------------------------------------------------------------------
+-- (31.10.2026, LUREDON_PLAN.md step 8; 01.11.2026 StyleKit 2 step 3) The options in DonCore's one options window for
+-- all Don addons (Libs\DonCore\Options.lua, loaded by the toc), without Questdon: Luredon registers its tabs itself
+-- (Options.Register), one tab per page and a tab for status, tools and commands. Same items, same keys in LuredonDB,
+-- the same onChange. Blizzard's AddOns page keeps only the status and a button to the window (BuildSettings with
+-- ownWindow). Only without the Options module Blizzard's full pages are built and stay the way in.
+---------------------------------------------------------------------------
+local TAB_KEYS = { "casting", "sound", "gear", "session", "appearance" }
+local TAB_ICONS = {
+  casting = "Interface\\Icons\\Trade_Fishing", sound = "Interface\\Icons\\INV_Misc_Fish_02",
+  gear = "Interface\\Icons\\INV_Chest_Cloth_17", session = "Interface\\Icons\\INV_Misc_PocketWatch_01",
+  appearance = "Interface\\Icons\\Ability_Hunter_EagleEye", tools = "Interface\\Icons\\INV_Misc_Wrench_01",
+}
+local ITEMS = {}
+for _, page in ipairs(PAGES) do for _, item in ipairs(page.items) do if item.key then ITEMS[item.key] = item end end end
+-- (04.11.2026, Era-Test) the minimap menu's switches run the same item (MinimapButton.lua)
+function ns.OptionItem(key) return ITEMS[key] end
+
+local function FamilyTabs()
+  local tabs = {}
+  for i, page in ipairs(PAGES) do
+    local list, section = {}, nil
+    for _, item in ipairs(page.items) do
+      if item.header then
+        section = item.header
+        list[#list + 1] = "header:" .. item.header
+      elseif item.key then
+        list[#list + 1] = item.key
+      elseif item.kind == "button" then
+        list[#list + 1] = "button:" .. tostring(section)
+      end
+    end
+    local key = TAB_KEYS[i] or ("page" .. i)
+    tabs[i] = { key = key, title = page.title, text = page.tip, icon = TAB_ICONS[key], main = list }
+  end
+  local names = {}
+  for _, t in ipairs(TOOLS) do names[#names + 1] = t[1] end
+  tabs[#tabs + 1] = { key = "tools", title = "Tools", text = "Status, tools and the chat commands.",
+    icon = TAB_ICONS.tools, status = true, tools = names }
+  return tabs
+end
+ns.FamilyOptionTabs = FamilyTabs -- (tests)
+
+local function HelpText()
+  local lines = {}
+  for _, h in ipairs(HELP) do lines[#lines + 1] = h[1] .. ": " .. h[2] end
+  return table.concat(lines, "\n")
+end
+
+-- a callback of the window that returns a value; an error lands in /ld diag (DonCore's own guard stays silent)
+local function Guard(where, fn)
+  return function(...)
+    local ok, v = pcall(fn, ...)
+    if ok then return v end
+    if ns.RecordError then pcall(ns.RecordError, where, v) end
+  end
+end
+
+local OPTIONS_ID = "Luredon"
+local function OptionsModule()
+  local DC = LibStub and LibStub("DonCore-1.0", true)
+  return DC and DC:Get("Options", 1)
+end
+
+-- registers Luredon in DonCore's options window once; nil without the module (or when it failed)
+local windowSpec
+local function RegisterWindow()
+  if windowSpec then return windowSpec end
+  local Opt = OptionsModule()
+  if not (Opt and Opt.Register) then return nil end
+  local ok, spec = pcall(Opt.Register, OPTIONS_ID, {
+    name = "Luredon", order = 3, addon = addonName,
+    media = "Interface\\AddOns\\Luredon\\Media\\",
+    tabs = FamilyTabs(),
+    pages = function() return PAGES end,
+    tools = function() return TOOLS end,
+    db = function() return ns.db end,
+    default = function(key) return ns.defaults and ns.defaults[key] end,
+    changed = ns.Safe("option window", function(key)
+      local item = ITEMS[key]
+      if item and item.onChange then item.onChange(ns.db[key]) end
+      if ns.RefreshSettingsUI then ns.RefreshSettingsUI() end
+    end),
+    T = function(s) return L[s] end,
+    labels = function(s) return L[s] end,
+    status = Guard("option status", Status),
+    help = Guard("option help", HelpText),
+    buttonKey = function(section) return "button:" .. tostring(section) end,
+  })
+  if ok and type(spec) == "table" then windowSpec = spec return spec end
+  if not ok and ns.RecordError then ns.RecordError("option window", spec) end
+  return nil
+end
+ns.OptionsWindowSpec = RegisterWindow -- (tests)
+
+-- what Blizzard's settings get; ownWindow: the tabs are in DonCore's window already, Blizzard's page is short
+local function SettingsSpec(ownWindow)
+  return { name = "Luredon", status = Status, tools = TOOLS, pages = PAGES, ownWindow = ownWindow or nil }
+end
+ns.SettingsSpec = SettingsSpec -- (tests: the full pages Luredon builds without the Options module)
+
+local function Build()
+  category = ns.BuildSettings(SettingsSpec(RegisterWindow() ~= nil))
+end
+
+-- tab: optional tab key of the window ("casting", "sound", "gear", "session", "appearance", "tools")
+function ns.OpenOptions(tab)
+  local Opt = OptionsModule()
+  if Opt and Opt.Open and RegisterWindow() and Opt.Open(OPTIONS_ID, tab) then return end
   if InCombatLockdown() then ns.Print(L["Not possible in combat."]) return end
   if category and Settings.OpenToCategory then
     Settings.OpenToCategory(category:GetID())
