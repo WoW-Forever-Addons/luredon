@@ -1,5 +1,8 @@
 # Changes
 
+## 1.6.1
+- **Surnames on WoW Forever:** names are kept as first name and surname, as the game gives them; your fishing statistics stay with your character (moved once to the new name).
+
 ## 1.6.0
 - **The Don look:** the fishing book is a window like the other Don addons: drag it bigger or smaller, your kinds of fish as cards with their item, the time of every session on the left, the zone map in the banner. The Luredon window, the question about hiding the interface and the export window look like the rest of the family.
 - **Options in the Don family window:** one tab per area with an icon, drop-down lists, search and a tab for tools and commands, also without Questdon. Your settings are kept.

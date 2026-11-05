@@ -107,6 +107,8 @@ local function MyFullName()
     local ok, n, r = pcall(UnitFullName, "player")
     if ok then name, realm = n, r end
   end
+  -- (05.11.2026) Forever: "Mae Wipeborn-<GetNormalizedRealmName>", as FullSender makes it of the sender "Mae Wipeborn"
+  if ns.Surnames() then name, realm = ns.UnitNameRealm("player"), ns.MyRealmKey() end
   if not (type(name) == "string" and Usable(name)) then return nil end
   if not (type(realm) == "string" and Usable(realm) and realm ~= "") then
     realm = Value(GetNormalizedRealmName) or Value(GetRealmName)

@@ -1,4 +1,4 @@
-local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 17)
+local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 18)
 
 ---------------------------------------------------------------------------
 -- DonCore module "Kit" (minor 1, 01.11.2026, STYLEKIT_PLAN.md "Schritt 2"; minor 2, 02.11.2026: Kit.IconButton, the symbols from
@@ -28,6 +28,8 @@ local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 17)
 -- (minor 14, 02.11.2026, Daniel on Questdon's chain parts: "part 1 und 2 sind ja schon erledigt, kann man das besser
 -- kennzeichnen?") ChainMark:SetDone(on): a green box with a tick instead of the number; ListRow item.chainDone
 -- (minor 15, 03.11.2026) FocusCard:SetPlain(on) hides the symbol's dark box as well
+-- (minor 18, 04.11.2026, Guildon's map tooltip) Kit.Tooltip: a head with class symbol, sub line and badge, class symbols
+-- before lines, opts.anchor and opts.edge = "gold"; Kit.IconText, Kit.CLASS_SHEET
 -- (minor 16, 04.11.2026, Era-Test, Daniel: "die zahlen sind sehr eng an dem / geschrieben besonders die 1") Kit.Fraction(a, b):
 -- "a / b" with a space on each side of the slash (Ring, ListRow progress); a Kit.Dialog always shows at Kit.scale times
 -- its own factor (d:SetOwnScale), a SetScale from outside before Show no longer stacks on top (Luredon's 1.5)
@@ -53,7 +55,7 @@ local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 17)
 ---------------------------------------------------------------------------
 if not Kit then return end -- the same or a newer Kit is loaded already
 local Core = LibStub("DonCore-1.0")
-Kit.VERSION = 17
+Kit.VERSION = 18
 
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 local floor, ceil, max, min, abs, pi, sin, cos = math.floor, math.ceil, math.max, math.min, math.abs, math.pi, math.sin, math.cos
@@ -270,32 +272,109 @@ function Kit.FullText(fs)
   return St and St.FullText(fs) or nil
 end
 
--- tooltip in the Don colours; lines: strings, { label, value [, colour] } or { header = "Text" }
-function Kit.Tooltip(owner, title, lines, hint)
+-- (minor 18, 04.11.2026, Guildon's map tooltip, Daniel: "der Tooltip sieht einfach aus") a symbol in front of a text as an
+-- escape: t.class (the class symbol from the class sheet) or t.icon (a texture, t.coords = { l, r, t, b } of it)
+local function IconText(t, size)
+  local tex, tc = t.icon, t.coords
+  if t.class then
+    local c = Kit.ClassCoords(t.class)
+    if c then tex, tc = Kit.CLASS_SHEET, c end
+  end
+  if not tex then return "" end
+  if tc then
+    return ("|T%s:%d:%d:0:0:256:256:%d:%d:%d:%d|t "):format(tex, size, size, floor(tc[1] * 256 + 0.5), floor(tc[2] * 256 + 0.5),
+      floor(tc[3] * 256 + 0.5), floor(tc[4] * 256 + 0.5))
+  end
+  return ("|T%s:%d:%d|t "):format(tostring(tex), size, size)
+end
+Kit.IconText = IconText
+
+-- (minor 18) the gold edge of a Kit tooltip: the game's tooltip keeps it only while this owner holds it; a small watcher
+-- (no hook) gives the edge its old colour back once the tooltip is hidden or taken by someone else
+local edge = {}
+local function EdgeColor(tt, r, g, b)
+  local nine = tt.NineSlice
+  if type(nine) == "table" and type(nine.SetBorderColor) == "function" then return pcall(nine.SetBorderColor, nine, r, g, b) end
+  if type(tt.SetBackdropBorderColor) == "function" then return pcall(tt.SetBackdropBorderColor, tt, r, g, b) end
+end
+local function EdgeNow(tt)
+  local nine = tt.NineSlice
+  local piece = type(nine) == "table" and nine.TopLeftCorner or nil
+  if type(piece) == "table" and type(piece.GetVertexColor) == "function" then
+    local ok, r, g, b = pcall(piece.GetVertexColor, piece)
+    if ok and r then return r, g, b end
+  end
+  if type(tt.GetBackdropBorderColor) == "function" then
+    local ok, r, g, b = pcall(tt.GetBackdropBorderColor, tt)
+    if ok and r then return r, g, b end
+  end
+  return 1, 1, 1
+end
+local function EdgeBack()
+  if not edge.owner then return end
+  local tt = GameTooltip
+  if tt then EdgeColor(tt, edge.r, edge.g, edge.b) end
+  edge.owner = nil
+  if edge.watch then edge.watch:Hide() end
+end
+local function EdgeGold(tt, owner)
+  if not edge.owner then edge.r, edge.g, edge.b = EdgeNow(tt) end
+  edge.owner = owner
+  EdgeColor(tt, C.goldBright[1], C.goldBright[2], C.goldBright[3])
+  if not edge.watch then
+    edge.watch = CreateFrame("Frame")
+    edge.watch:SetScript("OnUpdate", function()
+      local okS, shown = pcall(tt.IsShown, tt)
+      local okO, owned = pcall(tt.IsOwned, tt, edge.owner)
+      if not (okS and shown and okO and owned) then EdgeBack() end
+    end)
+  end
+  edge.watch:Show()
+end
+Kit.TooltipEdgeOwner = function() return edge.owner end -- (tests)
+
+-- tooltip in the Don colours; lines: strings, { label, value [, colour], class = "MAGE" (symbol before the label) } or
+-- { header = "Text" }. (minor 18) title may be a head { text, sub, class or icon (+ coords), badge (gold, on the right) };
+-- opts.anchor (default "ANCHOR_RIGHT"), opts.edge = "gold"
+function Kit.Tooltip(owner, title, lines, hint, opts)
   local tt = GameTooltip
   if not tt or not owner then return end
-  if not pcall(tt.SetOwner, tt, owner, "ANCHOR_RIGHT") then return end
-  local T, B, M, Q = C.hero, C.body, C.muted, C.quiet
-  if title and title ~= "" then pcall(tt.AddLine, tt, tostring(title), T[1], T[2], T[3], true) end
+  opts = type(opts) == "table" and opts or {}
+  EdgeBack()
+  if not pcall(tt.SetOwner, tt, owner, opts.anchor or "ANCHOR_RIGHT") then return end
+  local T, B, M, Q, G = C.hero, C.body, C.muted, C.quiet, C.txGold
+  if type(title) == "table" then
+    local text = IconText(title, 22) .. tostring(title.text or "")
+    if title.badge ~= nil and title.badge ~= "" then
+      pcall(tt.AddDoubleLine, tt, text, tostring(title.badge), T[1], T[2], T[3], G[1], G[2], G[3])
+    else
+      pcall(tt.AddLine, tt, text, T[1], T[2], T[3], true)
+    end
+    if title.sub and title.sub ~= "" then pcall(tt.AddLine, tt, tostring(title.sub), M[1], M[2], M[3], true) end
+  elseif title and title ~= "" then
+    pcall(tt.AddLine, tt, tostring(title), T[1], T[2], T[3], true)
+  end
   for _, line in ipairs(type(lines) == "table" and lines or {}) do
     if type(line) == "table" and line.header then
-      pcall(tt.AddLine, tt, tostring(line.header), C.txGold[1], C.txGold[2], C.txGold[3], true)
+      pcall(tt.AddLine, tt, tostring(line.header), G[1], G[2], G[3], true)
     elseif type(line) == "table" and line[2] ~= nil then
       local v = Col(line[3] or B)
-      pcall(tt.AddDoubleLine, tt, tostring(line[1] or ""), tostring(line[2]), M[1], M[2], M[3], v[1], v[2], v[3])
+      pcall(tt.AddDoubleLine, tt, IconText(line, 14) .. tostring(line[1] or ""), tostring(line[2]), M[1], M[2], M[3], v[1], v[2], v[3])
     elseif line ~= nil then
-      pcall(tt.AddLine, tt, tostring(type(line) == "table" and (line[1] or "") or line), B[1], B[2], B[3], true)
+      local text = type(line) == "table" and (IconText(line, 14) .. tostring(line[1] or "")) or tostring(line)
+      pcall(tt.AddLine, tt, text, B[1], B[2], B[3], true)
     end
   end
   if hint and hint ~= "" then pcall(tt.AddLine, tt, tostring(hint), Q[1], Q[2], Q[3], true) end
   pcall(tt.Show, tt)
+  if opts.edge == "gold" then EdgeGold(tt, owner) end
 end
 
 function Kit.HideTooltip(owner)
   local tt = GameTooltip
   if not tt then return end
   local ok, owned = pcall(tt.IsOwned, tt, owner)
-  if ok and owned then pcall(tt.Hide, tt) end
+  if ok and owned then pcall(tt.Hide, tt) EdgeBack() end
 end
 
 -- shows the whole text of every cut FontString of a block (fs list), with the block's own tooltip first
@@ -2738,6 +2817,7 @@ local CLASS_TC = {
   DRUID = { 0.7421875, 0.98828125, 0, 0.25 }, HUNTER = { 0, 0.25, 0.25, 0.5 }, SHAMAN = { 0.25, 0.49609375, 0.25, 0.5 },
   PRIEST = { 0.49609375, 0.7421875, 0.25, 0.5 }, WARLOCK = { 0.7421875, 0.98828125, 0.25, 0.5 }, PALADIN = { 0, 0.25, 0.5, 0.75 },
 }
+Kit.CLASS_SHEET = CLASS_SHEET
 function Kit.ClassCoords(class)
   local key = type(class) == "string" and class:upper() or ""
   local tc = type(CLASS_ICON_TCOORDS) == "table" and CLASS_ICON_TCOORDS[key] or CLASS_TC[key]

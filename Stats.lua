@@ -73,14 +73,33 @@ ns.StatsZone = Zone
 -- table between all characters, so switching characters produced fake skill-ups).
 -- 1.15: the key is kept once name and realm are readable (the window asks every second).
 local charKey
+-- (05.11.2026) data saved under the first name only ("Mae-Realm") moves to the Forever full name ("Mae Wipeborn-Realm")
+local function MoveOldKey(old, key)
+  local db = ns.db
+  if type(db) ~= "table" then return end
+  local function Move(t)
+    if type(t) == "table" and t[old] ~= nil then
+      if t[key] == nil then t[key] = t[old] end
+      t[old] = nil
+    end
+  end
+  Move(db.skills)
+  Move(type(db.book) == "table" and db.book.chars)
+  if type(db.lastSession) == "table" and db.lastSession.char == old then db.lastSession.char = key end
+end
 local function CharKey()
   if charKey then return charKey end
-  local name = UnitName and UnitName("player")
+  local raw = UnitName and UnitName("player")
   local realm = GetRealmName and GetRealmName()
-  if not (ns.Usable(name) and type(name) == "string") then name = nil end
+  if not (ns.Usable(raw) and type(raw) == "string") then raw = nil end
   if not (ns.Usable(realm) and type(realm) == "string") then realm = nil end
+  local name = raw
+  if raw and ns.Surnames() then name = ns.UnitNameRealm("player") or raw end -- (05.11.2026) Forever: "Mae Wipeborn"
   local key = (name or "?") .. "-" .. (realm or "?")
-  if name and realm then charKey = key end
+  if name and realm then
+    charKey = key
+    if raw ~= name then MoveOldKey(raw .. "-" .. realm, key) end
+  end
   return key
 end
 -- Asked again after a loading screen (and by the tests after a character change).
