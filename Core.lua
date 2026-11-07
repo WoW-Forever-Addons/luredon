@@ -292,11 +292,30 @@ end
 -- realm ("Mae", "Wipeborn"); the roster and the senders of addon messages say "Ratloff Ashbloom" (no realm), and a
 -- whisper needs that whole name. There the name is "<first> <surname>", the realm comes from GetNormalizedRealmName,
 -- never from the second value of UnitName or UnitFullName.
-function ns.Surnames()
+-- (05.11.2026, Siyo) with the surnames hidden in the game's options ShouldDisplaySurname() is false, yet UnitFullName still
+-- gives the surname in the realm's place and the senders still say "Siyo Fren": the surname became the realm. So a client
+-- that knows the function counts as one with surnames also when the second value of UnitFullName is not the own realm;
+-- its realm never comes from there (ns.MyRealmKey).
+function ns.SurnameClient()
   local P = C_PlayerInfo
-  if type(P) ~= "table" or type(P.ShouldDisplaySurname) ~= "function" then return false end
-  local ok, v = pcall(P.ShouldDisplaySurname)
-  return ok and v == true
+  return type(P) == "table" and type(P.ShouldDisplaySurname) == "function"
+end
+local function SurnameRealmKey(fn, ...)
+  if type(fn) ~= "function" then return nil end
+  local ok, a, b = pcall(fn, ...)
+  local v = a
+  if fn == UnitFullName then v = b end
+  if not ok or type(v) ~= "string" or v == "" or (issecretvalue and issecretvalue(v)) then return nil end
+  return (v:gsub("[%s%-]", ""))
+end
+function ns.Surnames()
+  if not ns.SurnameClient() then return false end
+  local ok, v = pcall(C_PlayerInfo.ShouldDisplaySurname)
+  if ok and v == true then return true end
+  local second = SurnameRealmKey(UnitFullName, "player")
+  local norm, plain = SurnameRealmKey(GetNormalizedRealmName), SurnameRealmKey(GetRealmName)
+  if not second or not (norm or plain) then return false end
+  return second ~= norm and second ~= plain
 end
 -- name and realm of a unit as chat and addon messages know it: on Forever ("Mae Wipeborn", nil), elsewhere
 -- (name, realm or nil); nil for anything unreadable
@@ -312,7 +331,7 @@ end
 -- the own realm for "Name-Realm" (no spaces): on Forever GetNormalizedRealmName, elsewhere UnitFullName's realm first
 function ns.MyRealmKey()
   local r
-  if not ns.Surnames() then
+  if not ns.SurnameClient() then
     local ok, _, rr = pcall(UnitFullName, "player")
     if ok and type(rr) == "string" and rr ~= "" then r = rr end
   end

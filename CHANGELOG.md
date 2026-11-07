@@ -1,5 +1,9 @@
 # Changes
 
+## 1.6.2
+- **Fish in Teldrassil on WoW Forever:** Raw Slitherskin Mackerel is listed for Teldrassil, as players actually catch it there (from shared catches; the classic tables do not have it).
+- **Hidden surnames on WoW Forever:** with surnames turned off in the game's options, your fishing statistics still stay with your character.
+
 ## 1.6.1
 - **Surnames on WoW Forever:** names are kept as first name and surname, as the game gives them; your fishing statistics stay with your character (moved once to the new name).
 

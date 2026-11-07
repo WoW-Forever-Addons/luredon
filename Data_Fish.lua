@@ -3,10 +3,14 @@
 -- "c" = container (chest, crate, trunk, bloated fish). Source: CMaNGOS classic-db (GPL v3, fishing loot
 -- per area with its references; the share of each item among the fish and containers kept here, from
 -- the loot chances), the zone of each map from the Forever client's UiMapAssignment (ATT, MIT), and
--- Luredon's own catches (ns.ZONE_FISH_OWN). This file is under the GNU General Public License v3 (see
--- LICENSE-GPLv3.txt). Fishing schools (pools) are not in these lists.
+-- the catches Luredon recorded: our own (LuredonDB.zones of the archived saved variables) and those
+-- other players shared over the addon channel (LuredonDB.shared), used only where CMaNGOS has no list
+-- for a zone (ns.ZONE_FISH_OWN) or lacks a fish we caught there, from 20 catches in a zone, shared
+-- catches from 1 reporters on (our own count as one); CMaNGOS chances are kept (rules: build_fish.py
+-- RECORDED). This file is under the GNU General Public License v3 (see LICENSE-GPLv3.txt). Fishing
+-- schools (pools) are not in the CMaNGOS lists; recorded catches may include pool catches.
 local _, ns = ...
-ns.ZONE_FISH_DATE = "2026-10-22"
+ns.ZONE_FISH_DATE = "2026-11-07"
 ns.ZONE_FISH = {
   [1411] = { { 6303, 98.0, "f" }, { 6356, 2.0, "c" } },
   [1412] = { { 6291, 59.4, "f" }, { 6289, 40.4, "f" }, { 6643, 0.2, "c" } },
@@ -21,7 +25,7 @@ ns.ZONE_FISH = {
   [1433] = { { 6308, 64.2, "f" }, { 6289, 35.5, "f" }, { 6647, 0.3, "c" } },
   [1436] = { { 6289, 50.8, "f" }, { 6308, 30.5, "f" }, { 6291, 18.3, "f" }, { 6645, 0.3, "c" } },
   [1437] = { { 6308, 64.2, "f" }, { 6289, 35.5, "f" }, { 6647, 0.3, "c" } },
-  [1438] = { { 6291, 59.4, "f" }, { 6289, 40.4, "f" }, { 6643, 0.2, "c" } },
+  [1438] = { { 6303, 90.0, "f" }, { 6291, 5.9, "f" }, { 6289, 4.0, "f" }, { 6643, 0.1, "c" } },  -- CMaNGOS + recorded 6303 (62 catches: own 0, shared 62 from 1 reporter)
   [1439] = { { 6361, 33.3, "f" }, { 12238, 33.3, "f" }, { 6303, 20.6, "f" }, { 6358, 11.1, "f" }, { 6307, 0.6, "c" }, { 6351, 0.6, "c" }, { 6353, 0.6, "c" } },
   [1440] = { { 6308, 64.2, "f" }, { 6289, 35.5, "f" }, { 6647, 0.3, "c" } },
   [1442] = { { 6308, 64.2, "f" }, { 6289, 35.5, "f" }, { 6647, 0.3, "c" } },
@@ -33,12 +37,12 @@ ns.ZONE_FISH = {
   [1458] = { { 6289, 48.3, "f" }, { 6299, 18.1, "f" }, { 6308, 18.1, "f" }, { 6291, 15.1, "f" }, { 6645, 0.4, "c" } },
   [2521] = { { 6291, 53.6, "f" }, { 6289, 46.4, "f" } },  -- Zephras Isle: own catches 2026-10-09 (70 catches in 75 casts)
 }
--- (2026-10-09) Lists above that come from own catches (the addon says so).
+-- (2026-10-09) Lists above that come from own or shared catches, not CMaNGOS (the addon says so).
 ns.ZONE_FISH_OWN = { [2521] = true }
 -- Zones above level 30 (Forever has not opened them yet): the same CMaNGOS data. Used only where
 -- ns.ZONE_FISH has no list, and shown as "classic data, not confirmed for Forever" until a catch
 -- confirms it.
-ns.ZONE_FISH_CLASSIC_DATE = "2026-10-22"
+ns.ZONE_FISH_CLASSIC_DATE = "2026-11-07"
 ns.ZONE_FISH_CLASSIC = {
   [1416] = { { 8365, 59.2, "f" }, { 6308, 40.5, "f" }, { 8366, 0.3, "c" } },
   [1417] = { { 8365, 59.2, "f" }, { 6308, 40.5, "f" }, { 8366, 0.3, "c" } },
@@ -61,3 +65,5 @@ ns.ZONE_FISH_CLASSIC = {
   [1451] = { { 13889, 30.8, "f" }, { 13759, 17.2, "f" }, { 13760, 17.2, "f" }, { 13890, 17.2, "f" }, { 13757, 12.1, "f" }, { 13758, 5.1, "f" }, { 13891, 0.4, "c" } },
   [1452] = { { 13889, 30.8, "f" }, { 13759, 17.2, "f" }, { 13760, 17.2, "f" }, { 13890, 17.2, "f" }, { 13757, 12.1, "f" }, { 13758, 5.1, "f" }, { 13891, 0.4, "c" } },
 }
+-- Recorded catches not used (too few catches, or one reporter only; build_fish.py RECORDED):
+--   [1453] only 8 catches (own 8, 20 needed): 6289 x6, 6291 x1, 6308 x1 of 8
