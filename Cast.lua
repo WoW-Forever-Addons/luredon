@@ -10,6 +10,7 @@ local LURE_SETTLE = 1.5 -- after the lure cast ends: time for the enchant to sho
 local LURE_LEARN = 15   -- a lure that shows up this soon after our click is ours
 local UNIT_QUIET = 1    -- 1.16: after a right-click on a unit, world clicks this soon count for nothing
 local HOLD_MAX = 0.3    -- 1.17: a right button held longer than this was camera turning, not a click
+local LINE_MAX = 35     -- 1.6.3: the line is out at most this long (Fishing channels 20 to 30 s), later lineOut is stale
 local CONFLICTS = { "FishingBuddy", "FishingAce", "BetterFishing" }
 
 BINDING_HEADER_LUREDON = "Luredon"
@@ -261,6 +262,7 @@ local interactOn = false
 local interactKeys = {}
 local interactState = "off"
 local lineOut = false
+local lineOutAt = 0 -- 1.6.3: when the line went out
 local interactQuietUntil = 0
 
 local function InteractKeys()
@@ -364,6 +366,7 @@ end)
 ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_START", function(_, _, _, spellID)
   if ns.IsFishingSpell(spellID) then
     lineOut = true
+    lineOutAt = GetTime()
     ns.UpdateInteractKey()
   end
 end)
@@ -425,6 +428,10 @@ local function OnMouseDown(_, mouseButton)
   if ns.conflict then ns.Decide("conflict", gap) return end
   local blocked = BlockReason()
   if blocked then ns.Decide(blocked, gap) return end
+  -- 1.6.3 (CurseForge comment 07.11.2026: "Right-clicking again to retrieve the fish doesn't work, it just casts the
+  -- line again"): the server reports the line coming in only after a round trip, often after the second press of a
+  -- double-click on the bobber. While the line is out a double-click never casts, so the catch is never thrown away.
+  if lineOut and now - lineOutAt < LINE_MAX then ns.Decide("line-out", gap) return end
 
   -- Decide with fresh bag data (the window and the ticker use a cached best lure).
   if ns.InvalidateLureCache then ns.InvalidateLureCache() end

@@ -87,12 +87,74 @@ local castbar -- (1.4.1) our own channel bar while the interface is hidden (belo
 local CastStart
 local watch   -- (1.4.1) small check while hidden: Alt+Z and typing (below)
 
+-- 1.6.3 (Daniel 07.11.2026: "man sieht den chat dann zwar ... aber man kann nicht schreiben"): the chat box belongs
+-- to the hidden interface, so Enter, / and the reply keys reached nothing. While Luredon keeps the interface hidden
+-- (out of combat, set right after hiding) these keys click a button of ours: it brings the interface back and opens
+-- the chat box as the key would have. Released whenever the interface comes back (combat brings it back first).
+local CHAT_KEYS = { "OPENCHAT", "OPENCHATSLASH", "REPLY", "REPLY2" }
+local chatKeyOwner, chatKeysOn
+local chatKeyButtons = {}
+local function ChatAction(action, text)
+  local util = ChatFrameUtil
+  if action == "OPENCHAT" or action == "OPENCHATSLASH" then
+    local open = ChatFrame_OpenChat or (util and util.OpenChat)
+    if open then pcall(open, text or (action == "OPENCHATSLASH" and "/" or "")) end
+  elseif action == "REPLY" then
+    local reply = ChatFrame_ReplyTell or (util and util.ReplyTell)
+    if reply then pcall(reply) end
+  else
+    local reply = ChatFrame_ReplyTell2 or (util and util.ReplyTell2)
+    if reply then pcall(reply) end
+  end
+end
+local function ChatKeysRelease()
+  if not chatKeysOn or not chatKeyOwner then return end
+  if InCombatLockdown and InCombatLockdown() then return end
+  ClearOverrideBindings(chatKeyOwner)
+  chatKeysOn = false
+end
+local function ChatKeysSet()
+  if chatKeysOn or type(GetBindingKey) ~= "function" or type(SetOverrideBindingClick) ~= "function" then return end
+  if InCombatLockdown and InCombatLockdown() then return end
+  if not chatKeyOwner then chatKeyOwner = CreateFrame("Frame", "LuredonChatKeyOwner", UIParent) end
+  for _, action in ipairs(CHAT_KEYS) do
+    local okKeys, k1, k2 = pcall(GetBindingKey, action)
+    if okKeys and (k1 or k2) then
+      local b = chatKeyButtons[action]
+      if not b then
+        b = CreateFrame("Button", "LuredonChatKey" .. action, UIParent)
+        b:SetScript("OnClick", function()
+          ns.Call("chat key", function()
+            -- (1.6.3, Daniel: "ohne dass das ganze ui wieder kommt") Luredon's own input line under the feed
+            if ns.ChatInputOpen and ns.ChatInputOpen(action) then return end
+            if ns.ShowInterface then ns.ShowInterface("chat") end
+            ChatAction(action)
+          end)
+        end)
+        chatKeyButtons[action] = b
+      end
+      for _, k in ipairs({ k1, k2 }) do
+        if type(k) == "string" and k ~= "" then
+          SetOverrideBindingClick(chatKeyOwner, true, k, b:GetName())
+          chatKeysOn = true
+        end
+      end
+    end
+  end
+end
+ns.ChatKeysOn = function() return chatKeysOn and true or false end -- (tests, /ld diag)
+
 local function OverlaysHide()
+  -- (1.6.3) a half typed line moves on into the game's chat box (the interface is back here)
+  local carry = ns.ChatInputClose and ns.ChatInputClose()
+  ChatKeysRelease()
   TickerHide()
   if ns.ChatFeedHide then ns.ChatFeedHide() end
   if castbar then castbar:Hide() end
   if watch then watch:Hide() end
+  if type(carry) == "string" and carry ~= "" then ChatAction("OPENCHAT", carry) end
 end
+ns.ChatAction = ChatAction -- (1.6.3) for the input line: commands it cannot send go to the game's chat box
 
 -- Back to the normal interface (reason for /ld diag).
 function ns.ShowInterface(reason)
@@ -138,11 +200,14 @@ ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_START", function(_, _, _, spellID)
       hiddenAt = GetTime()
       stats.hides = stats.hides + 1
       if watch then watch:Show() end
+      ChatKeysSet()
     end
   end
   if hidden then CastStart() end
 end)
 ns.OnPlayer("UNIT_SPELLCAST_CHANNEL_STOP", function() if castbar then castbar:Hide() end end)
+-- 1.6.3: chat keys the lockdown kept bound go back to the game after the fight
+ns.On("PLAYER_REGEN_ENABLED", function() if not hidden then ChatKeysRelease() end end)
 
 for event, reason in pairs({
   PLAYER_STARTED_MOVING = "moving", PLAYER_REGEN_DISABLED = "combat", PLAYER_DEAD = "dead",
@@ -204,7 +269,8 @@ local function Watch()
   if not hidden then return end
   if type(GetCurrentKeyBoardFocus) == "function" then
     local ok, focus = pcall(GetCurrentKeyBoardFocus)
-    if ok and focus ~= nil then ns.ShowInterface("typing") end
+    -- (1.6.3) typing in Luredon's own input line keeps the interface hidden
+    if ok and focus ~= nil and focus ~= ns.chatInput then ns.ShowInterface("typing") end
   end
 end
 ns.HideWatchTick = Watch -- (tests)
@@ -501,11 +567,12 @@ end)
 -- emotes and channels) or "off". Each line fades out after 20 seconds. With
 -- the feed on, a whisper no longer brings the interface back.
 ---------------------------------------------------------------------------
-local FEED_LINES, FEED_HOLD, FEED_FADE = 6, 20, 2
+local FEED_LINES, FEED_HOLD, FEED_FADE = 6, 20, 2 -- (1.6.3) FEED_LINES only sizes the history now
 local FEED_PRIVATE = {
   CHAT_MSG_WHISPER = "WHISPER", CHAT_MSG_BN_WHISPER = "BN_WHISPER", CHAT_MSG_GUILD = "GUILD",
   CHAT_MSG_OFFICER = "OFFICER", CHAT_MSG_PARTY = "PARTY", CHAT_MSG_PARTY_LEADER = "PARTY_LEADER",
   CHAT_MSG_RAID = "RAID", CHAT_MSG_RAID_LEADER = "RAID_LEADER", CHAT_MSG_RAID_WARNING = "RAID_WARNING",
+  CHAT_MSG_WHISPER_INFORM = "WHISPER_INFORM", CHAT_MSG_BN_WHISPER_INFORM = "BN_WHISPER_INFORM", -- (1.6.3) own whispers
 }
 local FEED_ALL = {
   CHAT_MSG_SAY = "SAY", CHAT_MSG_YELL = "YELL", CHAT_MSG_EMOTE = "EMOTE", CHAT_MSG_TEXT_EMOTE = "TEXT_EMOTE",
@@ -517,53 +584,85 @@ local FEED_FORMAT = {
   OFFICER = "CHAT_OFFICER_GET", PARTY = "CHAT_PARTY_GET", PARTY_LEADER = "CHAT_PARTY_LEADER_GET",
   RAID = "CHAT_RAID_GET", RAID_LEADER = "CHAT_RAID_LEADER_GET", RAID_WARNING = "CHAT_RAID_WARNING_GET",
   SAY = "CHAT_SAY_GET", YELL = "CHAT_YELL_GET", EMOTE = "CHAT_EMOTE_GET",
+  WHISPER_INFORM = "CHAT_WHISPER_INFORM_GET", BN_WHISPER_INFORM = "CHAT_BN_WHISPER_INFORM_GET", -- (1.6.3)
 }
 
-local feed
-local function CreateFeed()
-  feed = CreateFrame("Frame", "LuredonChatFeed", WorldFrame)
-  feed:SetFrameStrata("HIGH")
-  feed:SetSize(460, FEED_LINES * 20)
-  feed:SetPoint("BOTTOMLEFT", WorldFrame, "BOTTOMLEFT", 24, 210)
-  feed.lines = {}
-  for i = 1, FEED_LINES do
-    local fs = feed:CreateFontString(nil, "OVERLAY", "ChatFontNormal")
-    if not fs:GetFontObject() and ChatFontNormal then fs:SetFontObject(ChatFontNormal) end
-    local font, size = fs:GetFont()
-    if font then pcall(fs.SetFont, fs, font, size or 14, "OUTLINE") end
-    fs:SetPoint("BOTTOMLEFT", feed, "BOTTOMLEFT", 0, (i - 1) * 20)
-    fs:SetWidth(460)
-    fs:SetJustifyH("LEFT")
-    fs:SetWordWrap(false)
-    fs:Hide()
-    feed.lines[i] = fs
+-- 1.6.3 (Daniel 07.11.2026: "man sieht den chat dann zwar ... aber anders", Wahl: "Wie der echte Chat"): the feed is a
+-- scrolling message frame on the real chat window's place and size, with its font, font size and background, lines
+-- wrap and fade like in the chat, names in brackets as the chat writes them.
+local feed, feedBg
+local feedLastAt = 0
+local function Num(method, o)
+  if type(o) ~= "table" or type(o[method]) ~= "function" then return nil end
+  local ok, v = pcall(o[method], o)
+  if ok and type(v) == "number" and ns.Usable(v) then return v end
+end
+local function ChatWindow()
+  local cf = DEFAULT_CHAT_FRAME or ChatFrame1
+  return type(cf) == "table" and cf or nil
+end
+local function FeedLayout()
+  local cf = ChatWindow()
+  local world = Num("GetEffectiveScale", WorldFrame) or 1
+  local scale = Num("GetEffectiveScale", cf) or Num("GetEffectiveScale", UIParent) or 1
+  if world > 0 and scale > 0 then feed:SetScale(scale / world) end
+  local left, bottom = Num("GetLeft", cf), Num("GetBottom", cf)
+  local width, height = Num("GetWidth", cf), Num("GetHeight", cf)
+  if not (left and bottom and width and height and width > 50 and height > 30) then
+    left, bottom, width, height = 32, 95, 430, 120 -- the default chat window
   end
-  feed:SetScript("OnUpdate", function(self)
-    local now, any = GetTime(), false
-    for _, fs in ipairs(self.lines) do
-      local left = (fs.until_ or 0) - now
-      if left > 0 then
-        any = true
-        fs:SetAlpha(left < FEED_FADE and left / FEED_FADE or 1)
-      elseif fs:IsShown() then
-        fs:Hide()
-      end
+  feed:ClearAllPoints()
+  feed:SetPoint("BOTTOMLEFT", WorldFrame, "BOTTOMLEFT", left, bottom)
+  feed:SetSize(width, height)
+  -- font and background from the chat window's own settings
+  local font, size, flags
+  if cf and type(cf.GetFont) == "function" then
+    local ok, f, s, fl = pcall(cf.GetFont, cf)
+    if ok then font, size, flags = f, s, fl end
+  end
+  if not font and ChatFontNormal and ChatFontNormal.GetFont then
+    local ok, f, s, fl = pcall(ChatFontNormal.GetFont, ChatFontNormal)
+    if ok then font, size, flags = f, s, fl end
+  end
+  local r, g, b, a
+  if type(GetChatWindowInfo) == "function" then
+    local id = Num("GetID", cf) or 1
+    local ok, _, infoSize, ir, ig, ib, ia = pcall(GetChatWindowInfo, id)
+    if ok then
+      if type(infoSize) == "number" and infoSize > 0 then size = infoSize end
+      if type(ir) == "number" then r, g, b, a = ir, ig, ib, ia end
     end
-    if not any then self:Hide() end
+  end
+  if font then pcall(feed.SetFont, feed, font, size or 14, flags or "") end
+  feedBg:SetColorTexture(r or 0, g or 0, b or 0, math.max(type(a) == "number" and a or 0, DEFAULT_CHATFRAME_ALPHA or 0.25))
+end
+local function CreateFeed()
+  feed = CreateFrame("ScrollingMessageFrame", "LuredonChatFeed", WorldFrame)
+  feed:SetFrameStrata("HIGH")
+  feed:EnableMouse(false)
+  feed:SetJustifyH("LEFT")
+  feed:SetMaxLines(FEED_LINES * 4)
+  feed:SetFading(true)
+  feed:SetTimeVisible(FEED_HOLD)
+  feed:SetFadeDuration(FEED_FADE)
+  if feed.SetInsertMode then pcall(feed.SetInsertMode, feed, SCROLLING_MESSAGE_FRAME_INSERT_MODE_BOTTOM or "BOTTOM") end
+  feed:SetShadowColor(0, 0, 0, 1)
+  feed:SetShadowOffset(1, -1)
+  feedBg = feed:CreateTexture(nil, "BACKGROUND")
+  feedBg:SetPoint("TOPLEFT", feed, "TOPLEFT", -2, 3)
+  feedBg:SetPoint("BOTTOMRIGHT", feed, "BOTTOMRIGHT", 2, -6)
+  -- the background goes with the last line
+  feed:SetScript("OnUpdate", function(self)
+    if GetTime() - feedLastAt > FEED_HOLD + FEED_FADE and not (ns.chatInput and ns.chatInput:IsShown()) then self:Hide() end
   end)
   feed:Hide()
 end
 
 function ns.ChatFeedHide()
   if not feed then return end
-  for _, fs in ipairs(feed.lines) do fs.until_ = 0 fs:Hide() end
+  if feed.Clear then feed:Clear() end
+  feedLastAt = 0
   feed:Hide()
-end
-
-local function FeedColor(kind)
-  local info = ChatTypeInfo and ChatTypeInfo[kind]
-  if info and info.r then return ("|cff%02x%02x%02x"):format(info.r * 255, info.g * 255, info.b * 255) end
-  return "|cffffffff"
 end
 
 local function Short(name)
@@ -576,18 +675,19 @@ local function Short(name)
 end
 
 -- One chat message as a feed line (newest at the bottom, as in the chat).
-function ns.ChatFeedAdd(kind, message, sender, channelName)
+function ns.ChatFeedAdd(kind, message, sender, channelName, channelIndex)
   if not ns.InterfaceHidden() or not ns.Usable(message) or not ns.Usable(sender) or type(message) ~= "string" then return end
   if not feed then CreateFeed() end
-  local ui = UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale() or 1
-  local world = WorldFrame.GetEffectiveScale and WorldFrame:GetEffectiveScale() or 1
-  if world > 0 then feed:SetScale(ui / world) end
-  local who = Short(sender)
+  if not feed:IsShown() then FeedLayout() end
+  local name = Short(sender)
+  local who = (kind == "EMOTE") and name or ("[" .. name .. "]")
   local text
   if kind == "TEXT_EMOTE" then
     text = message
   elseif kind == "CHANNEL" then
-    text = ("[%s] %s: %s"):format(type(channelName) == "string" and channelName ~= "" and channelName or "?", who, message)
+    local channel = type(channelName) == "string" and channelName ~= "" and channelName or "?"
+    if type(channelIndex) == "number" and channelIndex > 0 then channel = channelIndex .. ". " .. channel end
+    text = ("[%s] %s: %s"):format(channel, who, message)
   else
     local fmt = FEED_FORMAT[kind] and _G[FEED_FORMAT[kind]]
     if type(fmt) == "string" and fmt:find("%%s") then
@@ -597,18 +697,11 @@ function ns.ChatFeedAdd(kind, message, sender, channelName)
       text = who .. ": " .. message
     end
   end
-  local color = FeedColor(kind == "CHANNEL" and "CHANNEL" or kind)
-  for i = FEED_LINES, 2, -1 do
-    local a, b = feed.lines[i], feed.lines[i - 1]
-    a:SetText(b:GetText() or "")
-    a.until_ = b.until_
-    if b:IsShown() then a:Show() a:SetAlpha(b:GetAlpha()) else a:Hide() end
-  end
-  local line = feed.lines[1]
-  line:SetText(color .. text .. "|r")
-  line.until_ = GetTime() + FEED_HOLD + FEED_FADE
-  line:SetAlpha(1)
-  line:Show()
+  local info = ChatTypeInfo and ChatTypeInfo[kind]
+  local r, g, b = 1, 1, 1
+  if type(info) == "table" and type(info.r) == "number" then r, g, b = info.r, info.g, info.b end
+  feed:AddMessage(text, r, g, b)
+  feedLastAt = GetTime()
   feed:Show()
   stats.chatLines = (stats.chatLines or 0) + 1
 end
@@ -619,7 +712,226 @@ for event, kind in pairs(FEED_PRIVATE) do
   end)
 end
 for event, kind in pairs(FEED_ALL) do
-  OnHidden(event, function(_, message, sender, _, _, _, _, _, _, channelBaseName)
-    if hidden and ns.db and ns.db.chatFeed == "all" then ns.ChatFeedAdd(kind, message, sender, channelBaseName) end
+  OnHidden(event, function(_, message, sender, _, _, _, _, _, channelIndex, channelBaseName)
+    if hidden and ns.db and ns.db.chatFeed == "all" then ns.ChatFeedAdd(kind, message, sender, channelBaseName, channelIndex) end
   end)
+end
+
+---------------------------------------------------------------------------
+-- (1.6.3) Daniel 07.11.2026: "kann der chat nicht einfach so bleiben und ich schreibe nur darin, ohne dass das ganze ui
+-- wieder kommt?" (Wahl: eigene Eingabezeile). The game's chat box belongs to the hidden interface, so Enter, / and the
+-- reply keys open Luredon's own line under the feed. It sends plain chat itself (say, yell, guild, officer, party, raid,
+-- raid warning, emote, whisper, reply, numbered channels; the type sticks as in the chat). Any other command (/cast,
+-- macros, other addons) is protected or unknown here: the interface comes back and the line goes into the game's chat
+-- box, one more Enter sends it. Esc closes the line. Combat, moving and the rest bring the interface back as before, a
+-- half typed line moves on into the game's chat box.
+---------------------------------------------------------------------------
+local INPUT_SLASH = {
+  s = "SAY", say = "SAY", y = "YELL", yell = "YELL", sh = "YELL", shout = "YELL",
+  g = "GUILD", guild = "GUILD", o = "OFFICER", officer = "OFFICER",
+  p = "PARTY", party = "PARTY", ra = "RAID", raid = "RAID", rw = "RAID_WARNING",
+  e = "EMOTE", em = "EMOTE", me = "EMOTE", emote = "EMOTE",
+  w = "WHISPER", whisper = "WHISPER", t = "WHISPER", tell = "WHISPER", msg = "WHISPER", send = "WHISPER",
+  r = "REPLY", reply = "REPLY",
+}
+local INPUT_HEADER = {
+  SAY = "CHAT_SAY_SEND", YELL = "CHAT_YELL_SEND", GUILD = "CHAT_GUILD_SEND", OFFICER = "CHAT_OFFICER_SEND",
+  PARTY = "CHAT_PARTY_SEND", RAID = "CHAT_RAID_SEND", RAID_WARNING = "CHAT_RAID_WARNING_SEND", EMOTE = "CHAT_EMOTE_SEND",
+}
+local input
+local inputType, inputTarget = "SAY", nil -- the sticky chat type (and whisper name or channel number)
+
+local function LastTell(told)
+  local fn
+  if told then
+    fn = ChatEdit_GetLastToldTarget or (ChatFrameUtil and ChatFrameUtil.GetLastToldTarget)
+  else
+    fn = ChatEdit_GetLastTellTarget or (ChatFrameUtil and ChatFrameUtil.GetLastTellTarget)
+  end
+  if not fn then return nil end
+  local ok, name = pcall(fn)
+  return ok and type(name) == "string" and name ~= "" and name or nil
+end
+
+local function Header()
+  local kind = inputType
+  if kind == "WHISPER" then
+    local fmt = type(CHAT_WHISPER_SEND) == "string" and CHAT_WHISPER_SEND or "Tell %s: "
+    local ok, s = pcall(string.format, fmt, inputTarget or "?")
+    return ok and s or ("Tell " .. tostring(inputTarget) .. ": ")
+  elseif kind == "CHANNEL" then
+    local name
+    if GetChannelName then
+      local ok, _, n = pcall(GetChannelName, inputTarget)
+      if ok and type(n) == "string" then name = n end
+    end
+    return ("[%s. %s] "):format(tostring(inputTarget), name or "?")
+  end
+  local s = _G[INPUT_HEADER[kind] or ""]
+  if type(s) == "string" and s ~= "" and not s:find("%%") then return s end
+  return kind:sub(1, 1) .. kind:sub(2):lower() .. ": "
+end
+
+local function InputColor()
+  local key = inputType == "CHANNEL" and ("CHANNEL" .. tostring(inputTarget)) or inputType
+  local info = ChatTypeInfo and ChatTypeInfo[key]
+  if type(info) == "table" and type(info.r) == "number" then return info.r, info.g, info.b end
+  return 1, 1, 1
+end
+
+local function InputRefresh()
+  if not input then return end
+  local r, g, b = InputColor()
+  input.header:SetText(Header())
+  input.header:SetTextColor(r, g, b)
+  input:SetTextColor(r, g, b)
+  local w = input.header.GetStringWidth and input.header:GetStringWidth() or 0
+  input:SetTextInsets((type(w) == "number" and w or 0) + 6, 6, 0, 0)
+end
+
+local function Send(kind, target, message)
+  message = message:sub(1, 255)
+  local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+  if not send then return false end
+  local ok
+  if kind == "CHANNEL" or kind == "WHISPER" then
+    ok = pcall(send, message, kind, nil, target)
+  else
+    ok = pcall(send, message, kind)
+  end
+  stats.inputSent = (stats.inputSent or 0) + (ok and 1 or 0)
+  return ok
+end
+
+local function InputHide()
+  if not input then return end
+  input:SetText("")
+  input:ClearFocus()
+  input:Hide()
+end
+
+-- Hand the line over to the game's chat box: the interface comes back.
+local function HandOver(text)
+  InputHide()
+  stats.inputHandedOver = (stats.inputHandedOver or 0) + 1
+  if ns.ShowInterface then ns.ShowInterface("chat command") end
+  if ns.ChatAction then ns.ChatAction("OPENCHAT", text) end
+end
+
+-- What the line says: send it, switch the sticky type, or hand it over. Returns true when the line stays open.
+local function InputEnter(text)
+  if type(text) ~= "string" then text = "" end
+  text = text:gsub("^%s+", "")
+  if text == "" then InputHide() return false end
+  if text:sub(1, 1) ~= "/" then
+    if inputType == "WHISPER" and not inputTarget then HandOver(text) return false end
+    if input then input:AddHistoryLine(text) end
+    Send(inputType, inputTarget, text)
+    InputHide()
+    return false
+  end
+  local cmd, rest = text:match("^/(%S+)%s*(.*)$")
+  cmd = cmd and cmd:lower()
+  local kind = cmd and (tonumber(cmd) and "CHANNEL" or INPUT_SLASH[cmd])
+  if not kind then HandOver(text) return false end
+  local target
+  if kind == "CHANNEL" then
+    target = tonumber(cmd)
+  elseif kind == "WHISPER" then
+    target, rest = rest:match("^(%S+)%s*(.*)$")
+    if not target then HandOver(text) return false end
+  elseif kind == "REPLY" then
+    kind, target = "WHISPER", LastTell(false)
+    if not target then HandOver(text) return false end
+  end
+  inputType, inputTarget = kind, target
+  if rest == "" then
+    -- only the command: the line stays open with the new type, as in the chat
+    if input then input:SetText("") end
+    InputRefresh()
+    return true
+  end
+  if input then input:AddHistoryLine(text) end
+  Send(kind, target, rest)
+  InputHide()
+  return false
+end
+ns.ChatInputEnter = InputEnter -- (tests)
+
+local function CreateInput()
+  input = CreateFrame("EditBox", "LuredonChatInput", WorldFrame)
+  ns.chatInput = input
+  input:SetFrameStrata("DIALOG")
+  input:SetAutoFocus(false)
+  input:SetMaxLetters(255)
+  input:SetHistoryLines(32)
+  if input.SetAltArrowKeyMode then input:SetAltArrowKeyMode(false) end
+  input:SetHeight(26)
+  local bg = input:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints(input)
+  bg:SetColorTexture(0, 0, 0, 0.6)
+  local line = input:CreateTexture(nil, "BORDER")
+  line:SetPoint("TOPLEFT", input, "TOPLEFT", 0, 0)
+  line:SetPoint("TOPRIGHT", input, "TOPRIGHT", 0, 0)
+  line:SetHeight(1)
+  line:SetColorTexture(1, 0.82, 0, 0.5)
+  input.header = input:CreateFontString(nil, "OVERLAY", "ChatFontNormal")
+  input.header:SetPoint("LEFT", input, "LEFT", 6, 0)
+  input:SetScript("OnEnterPressed", function(self)
+    ns.Call("chat input", function() InputEnter(self:GetText()) end)
+  end)
+  input:SetScript("OnEscapePressed", function() InputHide() end)
+  input:SetScript("OnSpacePressed", function(self)
+    -- "/g " switches the type at once, as in the chat (not for whispers: the name follows)
+    ns.Call("chat input space", function()
+      local t = self:GetText()
+      if type(t) == "string" and t:match("^/%S+ $") then
+        local cmd = t:match("^/(%S+)"):lower()
+        local kind = INPUT_SLASH[cmd]
+        if tonumber(cmd) or (kind and kind ~= "WHISPER") then InputEnter(t) end
+      end
+    end)
+  end)
+  input:Hide()
+end
+
+-- Opens the line for a chat key; false: not possible (the caller brings the interface back).
+function ns.ChatInputOpen(action)
+  if not ns.InterfaceHidden() then return false end
+  if not feed then CreateFeed() end
+  if not input then CreateInput() end
+  FeedLayout()
+  feedLastAt = GetTime()
+  feed:Show()
+  local ok, font, size, flags = pcall(feed.GetFont, feed)
+  if ok and font then
+    pcall(input.SetFont, input, font, size or 14, flags or "")
+    pcall(input.header.SetFont, input.header, font, size or 14, flags or "")
+  end
+  input:SetScale(feed:GetScale() or 1)
+  input:ClearAllPoints()
+  input:SetPoint("TOPLEFT", feed, "BOTTOMLEFT", -2, -8)
+  input:SetPoint("TOPRIGHT", feed, "BOTTOMRIGHT", 2, -8)
+  local text = ""
+  if action == "OPENCHATSLASH" then
+    text = "/"
+  elseif action == "REPLY" or action == "REPLY2" then
+    local name = LastTell(action == "REPLY2")
+    if name then inputType, inputTarget = "WHISPER", name end
+  end
+  if inputType == "WHISPER" and not inputTarget then inputType = "SAY" end
+  InputRefresh()
+  input:Show()
+  input:SetText(text)
+  input:SetFocus()
+  stats.inputOpened = (stats.inputOpened or 0) + 1
+  return true
+end
+
+-- Closes the line (the interface came back); returns what was typed so far.
+function ns.ChatInputClose()
+  if not input or not input:IsShown() then return nil end
+  local text = input:GetText()
+  InputHide()
+  if type(text) == "string" and text ~= "" and text ~= "/" then return text end
 end
