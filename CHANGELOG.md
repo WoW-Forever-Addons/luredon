@@ -1,5 +1,8 @@
 # Changes
 
+## 1.6.4
+- **Cleaner text in narrow places:** text that is shrunk to fit keeps one font and size.
+
 ## 1.6.3
 - **Double right-click on the bobber:** while your line is out, a double-click never casts again, so a catch is no longer thrown away when the game reports the line coming in a moment late. Thanks for the report!
 - **Chat while the interface is hidden:** looks like your chat window (its place, size, font and background, lines wrap and fade as there). Enter, / and the reply keys open a chat line right below it, and the interface stays hidden: say, yell, guild, officer, party, raid, emote, whisper (/w name), reply (R or /r) and numbered channels (/1, /2) are sent from there, the chat type sticks as in the chat. Other commands (/cast, macros, other addons) bring the interface back and go into the game's chat box; one more Enter sends them.

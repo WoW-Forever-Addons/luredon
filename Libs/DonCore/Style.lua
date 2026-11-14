@@ -1,4 +1,4 @@
-local Style = LibStub("DonCore-1.0"):NewModule("Style", 13)
+local Style = LibStub("DonCore-1.0"):NewModule("Style", 19)
 
 ---------------------------------------------------------------------------
 -- Style kit, DonCore module "Style" (minor 5; Style.VERSION = 3 is the kit's own version), see DESIGN.md.
@@ -21,6 +21,29 @@ local Style = LibStub("DonCore-1.0"):NewModule("Style", 13)
 -- 16 px, the title moves right; before it was hidden in Don rows.
 -- (minor 12, 03.11.2026) panel:SetPlainVeil, a veil behind plain panels; gone again in minor 13 (Daniel: "muss weg, es muss
 -- ohne lesbar sein"). (minor 13) a fitted text that gets the plain outline stays inside the room it was fitted to.
+-- (minor 14, 11.11.2026, CurseForge t0tal) a dragged panel is saved hanging at its top edge, so a list that changes its
+-- height grows downwards, not around the screen point the game picked; older saved places are moved up once.
+-- (minor 15, 11.11.2026, Profitdon, Daniel's pictures 122028 ff.: tabs "Herst...", first row and some heads 1.6 times too
+-- big after the game window had changed its size) FitText no longer sets the font on the text itself (such a text kept its
+-- old pixel size when the resolution changed, texts on a font object followed): one shared font object per file, size
+-- and flags (Style.FitFont), colour, shadow and alignment of the text are kept.
+-- (minor 19, 13.11.2026, Daniel to the folded sections of Questdon's quest list, "+ 15" on the right: "das sieht auch noch
+-- nicht clean aus ... jede eigene quest einklappbar ... am besten links neben den quests. es soll ein optisch gut
+-- aussehender button sein, der dann auch für die reiter in der questliste selber funktionieren soll") one fold button
+-- for rows and headers, the game's own plus and minus button, on the left: row:SetFoldButton(open, fn) puts it in front
+-- of a row (a click calls fn(row), not the row's own click); a foldable header (hdr:SetFold) shows the same button in
+-- front of its text and, folded, its count behind it as "(15)". Nothing on the right any more.
+-- (minor 18, 12.11.2026, Daniel's picture of a quest title on two lines in the game look: "bei einer zweiten zeile gerne
+-- so eingerückt, dass es mit der oberen am gleichen punkt anfängt") row:SetLead(text): a short text in front of a plain
+-- row's text (a dot, "[26]"); the text starts after it and its further lines start there too
+-- (minor 17, 12.11.2026, Daniel's pictures of the game look on the laptop: "schrift sehr groß und schrift schlecht lesbar",
+-- one distance and one title bigger than the others) row:SetMain forgets the size FitText kept from the row's other font
+-- (a reused row kept the big or the small size of its former use); the game look's texts get the thin outline of a
+-- plain panel besides the shadow (Daniel chose it: readable on bright ground)
+-- (minor 16, 12.11.2026, Questdon, Daniel: the quest list as an option "mehr wie blizzards eigene ... direkt in das spiel
+-- ui passt") panel:SetGameLook(on): a panel that reads like the game's own lists: no background and frame (as with the
+-- chrome hidden), no mark and no line in the head, the title in the game's gold, the texts with the game's shadow and no
+-- outline. panel:SetButtonsFaded(on): the head's buttons invisible (still clickable) but the fold button.
 ---------------------------------------------------------------------------
 if not Style then return end -- the same or a newer Style is loaded already
 
@@ -102,7 +125,7 @@ local S = {
   padX = 8, padY = 6,
   header = 20, titleX = 8, button = 14, buttonGap = 4, buttonRight = 4,
   rowGap = 2, section = 8,
-  icon = 14, iconGap = 4,
+  icon = 14, iconGap = 4, fold = 16,
   valueGap = 8,
   bar = 6,
   minWidth = 220,
@@ -233,9 +256,45 @@ local function BaseFont(fs)
   return base
 end
 
+Style.fitFonts = Style.fitFonts or {}
+function Style.FitFont(path, size, flags)
+  flags = flags or ""
+  local key = tostring(path) .. "\0" .. tostring(size) .. "\0" .. tostring(flags)
+  local f = Style.fitFonts[key]
+  if f == nil then
+    f = false
+    if type(CreateFont) == "function" then
+      local n, name = 0
+      repeat n = n + 1 name = "DonStyleFitFont" .. n until not _G[name]
+      local ok, obj = pcall(CreateFont, name)
+      if ok and obj and Call(obj, "SetFont", path, size, flags) then f = obj end
+    end
+    Style.fitFonts[key] = f
+  end
+  return f or nil
+end
+
 local function SetSize(fs, base, size)
   if fs._fitSize ~= size then
-    Call(fs, "SetFont", base[1], size, base[3])
+    local fo = fs.SetFontObject and Style.FitFont(base[1], size, base[3])
+    if fo then
+      -- a font object brings its own colour, shadow and alignment: keep the text's
+      local okC, r, g, b, a = Call(fs, "GetTextColor")
+      local okO, sx, sy = Call(fs, "GetShadowOffset")
+      local okS, sr, sg, sb, sa = Call(fs, "GetShadowColor")
+      local okH, jh = Call(fs, "GetJustifyH")
+      local okV, jv = Call(fs, "GetJustifyV")
+      local okP, sp = Call(fs, "GetSpacing")
+      if not Call(fs, "SetFontObject", fo) then Call(fs, "SetFont", base[1], size, base[3]) end
+      if okC and type(r) == "number" then Call(fs, "SetTextColor", r, g, b, a) end
+      if okO and type(sx) == "number" then Call(fs, "SetShadowOffset", sx, sy) end
+      if okS and type(sr) == "number" then Call(fs, "SetShadowColor", sr, sg, sb, sa) end
+      if okH and type(jh) == "string" then Call(fs, "SetJustifyH", jh) end
+      if okV and type(jv) == "string" then Call(fs, "SetJustifyV", jv) end
+      if okP and type(sp) == "number" then Call(fs, "SetSpacing", sp) end
+    else
+      Call(fs, "SetFont", base[1], size, base[3])
+    end
     fs._fitSize = size
   end
 end
@@ -542,6 +601,9 @@ local ICONS = {
   close    = { atlas = { "uitools-icon-close" },        file = "Interface\\Buttons\\UI-StopButton" },
   collapse = { atlas = { "uitools-icon-minimize" },     file = "Interface\\Buttons\\UI-MinusButton-Up" },
   expand   = { atlas = { "uitools-icon-plus" },         file = "Interface\\Buttons\\UI-PlusButton-Up" },
+  -- (minor 19) the fold button of rows and headers: the game's own plus and minus button in its own colours
+  foldOpen   = { atlas = {}, file = "Interface\\Buttons\\UI-MinusButton-Up", color = true },
+  foldClosed = { atlas = {}, file = "Interface\\Buttons\\UI-PlusButton-Up", color = true },
   options  = { atlas = { "QuestLog-icon-setting" },    file = "Interface\\Buttons\\UI-OptionsButton" },
   back     = { atlas = { "common-icon-backarrow" },     file = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up" },
   forward  = { atlas = { "common-icon-forwardarrow" },  file = "Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up" },
@@ -877,6 +939,16 @@ local DON_ROW_H, BADGE_W, BADGE_H = 34, 28, 18
 local function DonRowLayout(row, width)
   local left = S.padX + (row._indent or 0) + (row._markSet and 3 or 0)
   local right = S.padX
+  if row.fold then -- (minor 19)
+    if row._foldSet then
+      row.fold:ClearAllPoints()
+      row.fold:SetPoint("LEFT", row, "LEFT", left, 0)
+      row.fold:Show()
+      left = left + S.fold + S.iconGap
+    else
+      row.fold:Hide()
+    end
+  end
   if row._badgeSet then
     row.badge:ClearAllPoints()
     row.badge:SetPoint("LEFT", row, "LEFT", left, 0)
@@ -941,6 +1013,17 @@ local function RowLayout(row, width)
   local right = S.padX
   local textY = 0
   local size = FontSize(row.text)
+  if row.fold then -- (minor 19) the fold button first, in the middle of the first line
+    if row._foldSet then
+      if S.fold > size then textY = floor((S.fold - size) / 2 + 0.5) end
+      row.fold:ClearAllPoints()
+      row.fold:SetPoint("TOPLEFT", row, "TOPLEFT", left, -max(0, floor((size - S.fold) / 2 + 0.5)))
+      row.fold:Show()
+      left = left + S.fold + S.iconGap
+    else
+      row.fold:Hide()
+    end
+  end
   if row._iconSet then
     row.icon:ClearAllPoints()
     row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", left, 0)
@@ -949,6 +1032,18 @@ local function RowLayout(row, width)
     left = left + S.icon + S.iconGap
   else
     row.icon:Hide()
+  end
+  -- (minor 18) the lead: the text and its further lines start after it
+  if row.lead then
+    if row._leadSet then
+      row.lead:ClearAllPoints()
+      row.lead:SetPoint("TOPLEFT", row, "TOPLEFT", left, -textY)
+      row.lead:Show()
+      local lw = TextWidth(row.lead)
+      left = left + lw + max(3, floor(size * 0.3 + 0.5))
+    else
+      row.lead:Hide()
+    end
   end
   local inner = max(16, width - left - right)
   local vw, vh = 0, 0
@@ -992,7 +1087,7 @@ local function RowLayout(row, width)
   row.text:SetPoint("TOPLEFT", row, "TOPLEFT", left, -textY)
   local th, okT = TextHeight(row.text)
   if not okT then ok = false end
-  local h = max(th + textY, vh, row._iconSet and S.icon or 0)
+  local h = max(th + textY, vh, row._iconSet and S.icon or 0, row._foldSet and S.fold or 0)
   if row.bar and row.bar._inUse then
     local bar = row.bar
     bar._px = row._panel and row._panel._px or 1
@@ -1011,19 +1106,41 @@ local function RowLayout(row, width)
 end
 
 local function HeaderLayout(hdr, width)
-  -- (18.10.) a foldable header keeps room on the right for "+"/"-" and its count
-  local vw = 0
-  if hdr.value and hdr._onFold then
-    hdr.value:ClearAllPoints()
-    hdr.value:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
-    vw = 48
-    hdr.value:SetWidth(vw)
+  -- (minor 19) a foldable header: the fold button in front, the text, and folded its count "(15)" right behind it
+  local x, fold = 0, hdr._onFold ~= nil
+  if fold and hdr.foldIcon then x = S.fold + S.iconGap end
+  local avail = max(width - x, 1)
+  local tw, cw = avail, 0
+  if fold and hdr.value and HasText(hdr.value) then
+    cw = TextWidth(hdr.value) + 2
+    tw = max(1, min(TextWidth(hdr.text) + 2, avail - cw - S.iconGap))
   end
-  hdr.text:SetWidth(max(width - vw, 1))
-  hdr.text:ClearAllPoints()
-  hdr.text:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, 0)
+  hdr.text:SetWidth(tw)
   local h, ok = TextHeight(hdr.text)
-  return max(h, 1), ok
+  local rowH = max(h, fold and hdr.foldIcon and S.fold or 1, 1)
+  local ty = floor((rowH - h) / 2 + 0.5)
+  hdr.text:ClearAllPoints()
+  hdr.text:SetPoint("TOPLEFT", hdr, "TOPLEFT", x, -ty)
+  if hdr.foldIcon then
+    if fold then
+      hdr.foldIcon:ClearAllPoints()
+      hdr.foldIcon:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, -floor((rowH - S.fold) / 2 + 0.5))
+      hdr.foldIcon:Show()
+    else
+      hdr.foldIcon:Hide()
+    end
+  end
+  if hdr.value then
+    if cw > 0 then
+      hdr.value:SetWidth(cw)
+      hdr.value:ClearAllPoints()
+      hdr.value:SetPoint("TOPLEFT", hdr, "TOPLEFT", x + tw + S.iconGap, -ty)
+      hdr.value:Show()
+    else
+      hdr.value:Hide()
+    end
+  end
+  return rowH, ok
 end
 
 local function BarItemLayout(bar, width)
@@ -1118,6 +1235,7 @@ function Style.Relayout(panel)
       RestoreCollapsed(panel)
       panel._body:Hide()
       panel:SetHeight(panel._headerH or S.header)
+      if Style.PanelTop then Style.PanelTop(panel) end
       panel._contentHeight = 0
       FinishHover(panel)
       return true
@@ -1191,8 +1309,9 @@ function Style.Relayout(panel)
   panel._contentHeight = y
   panel._body:SetHeight(y)
   panel:SetHeight((panel._headerH or S.header) + y)
+  if Style.PanelTop then Style.PanelTop(panel) end
   FinishHover(panel)
-  if panel._chromeHidden then Style.PlainText(panel, true) end
+  if panel._chromeHidden then Style.PlainText(panel, true) end -- (minor 17) the game look with the outline too
   if allOk then
     panel._retries = 0
   else
@@ -1367,6 +1486,9 @@ function RowMethods:SetMain(main)
   if _G[t] then
     Call(self.text, "SetFontObject", _G[t])
     Call(self.value, "SetFontObject", _G[t])
+    if self.lead then Call(self.lead, "SetFontObject", _G[t]) end
+    -- (minor 17) the other font: what FitText remembered of the old one (its size as the base, the last fit) is void
+    for _, fs in ipairs({ self.text, self.value }) do fs._fitBase, fs._fitSize, fs._fitKey, fs._fitDone = nil, nil, nil, nil end
   end
   Changed(self)
   return self
@@ -1435,6 +1557,60 @@ function RowMethods:SetValueWidth(v, fixed)
   return self
 end
 
+-- (minor 18) a lead in front of the text of a plain row (colour codes in the text itself); nil or "" takes it away
+function RowMethods:SetLead(text)
+  text = text ~= nil and tostring(text) or ""
+  if text == "" and not self.lead then return self end
+  if not self.lead then
+    self.lead = NewFont(self, "GameFontHighlightSmall", "textPrimary")
+    local fo = self.text:GetFontObject()
+    if fo then Call(self.lead, "SetFontObject", fo) end
+    Call(self.lead, "SetWordWrap", false)
+  end
+  if (self.lead:GetText() or "") ~= text or (self._leadSet or false) ~= (text ~= "") then
+    self.lead:SetText(text)
+    self._leadSet = text ~= "" or nil
+    Changed(self)
+  end
+  return self
+end
+
+-- (minor 19) the fold button in front of a row: open (the minus) or folded (the plus); a click calls fn(row) and not
+-- the row's own click. fn nil takes the button away.
+function RowMethods:SetFoldButton(open, fn)
+  if type(fn) ~= "function" then
+    if self.fold and self._foldSet then
+      self._foldSet, self.fold._fn = nil, nil
+      self.fold:Hide()
+      Changed(self)
+    end
+    return self
+  end
+  if not self.fold then
+    local b = CreateFrame("Button", nil, self)
+    b:SetSize(S.fold, S.fold)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints(b)
+    b.glow = b:CreateTexture(nil, "HIGHLIGHT")
+    b.glow:SetAllPoints(b)
+    b.glow:SetTexture("Interface\\Buttons\\UI-PlusButton-Hilight")
+    Call(b.glow, "SetBlendMode", "ADD")
+    Call(b, "RegisterForClicks", "LeftButtonUp")
+    b._row = self
+    b:SetScript("OnClick", function(btn) if btn._fn then Try("row.fold", btn._fn, btn._row) end end)
+    self.fold = b
+  end
+  open = open and true or false
+  self.fold._fn = fn
+  if self.fold._open ~= open or not self._foldSet then
+    self.fold._open = open
+    Style.SetIcon(self.fold.icon, open and "foldOpen" or "foldClosed")
+    self._foldSet = true
+    Changed(self)
+  end
+  return self
+end
+
 function RowMethods:SetIndent(px)
   px = tonumber(px) or 0
   if px == (self._indent or 0) then return self end
@@ -1463,6 +1639,8 @@ local function RowReset(row)
   row._iconSet = false; row.icon:Hide()
   row._iconKey, row._iconAtlas, row._iconTC = nil, nil, nil
   row._indent, row._gapBefore = 0, nil
+  if row.lead then row._leadSet = nil row.lead:SetText("") row.lead:Hide() end
+  if row.fold then row._foldSet, row.fold._fn = nil, nil row.fold:Hide() end
   row._kv, row._keep, row._ttAnchor = nil, nil, nil
   row._valueMax, row._valueFixed = nil, nil
   if row.badge then
@@ -1581,18 +1759,22 @@ function Style.Header(panel, text)
       return self
     end
     function hdr:Release() Release(self) end
-    -- (18.10.) SetFold(open, count, fn): a click on the header calls fn(header, button); the right shows "-" while
-    -- open, "+ count" while folded. Every Header() call starts unfoldable again.
-    hdr.value = NewFont(hdr, "GameFontNormalLarge", "textPrimary") -- (18.10., Daniel: the "-" was hard to see) bigger and brighter; (20.10.) larger still
-    if hdr.value.SetJustifyH then hdr.value:SetJustifyH("RIGHT") end
+    -- (18.10.) SetFold(open, count, fn): a click on the header calls fn(header, button). (minor 19) the fold button
+    -- in front shows the state (minus: open, plus: folded); folded, the count stands behind the text as "(15)".
+    -- Every Header() call starts unfoldable again.
+    hdr.value = NewFont(hdr, "GameFontNormalSmall", "textSecondary")
+    if hdr.value.SetJustifyH then hdr.value:SetJustifyH("LEFT") end
+    hdr.foldIcon = hdr:CreateTexture(nil, "ARTWORK")
+    hdr.foldIcon:SetSize(S.fold, S.fold)
+    hdr.foldIcon:Hide()
     hdr:SetScript("OnMouseUp", function(self, button) if self._onFold then Try("header.fold", self._onFold, self, button) end end)
     function hdr:SetFold(open, count, fn)
       self._onFold = type(fn) == "function" and fn or nil
-      local t = self._onFold and (open and "\226\128\148" or ("+ " .. tostring(count or ""))) or ""
-      -- (20.10.) the long dash is large, the count next to a folded header normal
-      if self.value.SetFontObject then self.value:SetFontObject(open and "GameFontNormalLarge" or "GameFontNormal") end
-      if (self.value:GetText() or "") ~= t then self.value:SetText(t); Changed(self) end
-      self.value:SetShown(self._onFold ~= nil)
+      if self._onFold then self._open = open and true or false else self._open = nil end
+      local t = self._onFold and not open and count ~= nil and ("(" .. tostring(count) .. ")") or ""
+      if self._onFold then Style.SetIcon(self.foldIcon, open and "foldOpen" or "foldClosed") end
+      if (self.value:GetText() or "") ~= t then self.value:SetText(t) end
+      Changed(self)
       if self.EnableMouse then self:EnableMouse(self._onFold ~= nil) end
       return self
     end
@@ -1849,12 +2031,41 @@ local function ApplyPosition(p)
   p:SetPoint(d[1], UIParent, d[2] or d[1], d[3] or 0, d[4] or 0)
 end
 
+-- (minor 14, 11.11.2026, CurseForge t0tal: "the list expands from the center rather than from the top down") After a
+-- drag the game anchors a frame at the screen point nearest to it (LEFT, CENTER, BOTTOM...), and a panel whose height
+-- changes then grows around that point. A panel always hangs at its top: the same place, the point moved up to the
+-- top edge (LEFT -> TOPLEFT, CENTER -> TOP, BOTTOMRIGHT -> TOPRIGHT), the screen point it hangs at stays.
+local function TopPoint(p, point, y)
+  if type(point) ~= "string" or point:find("^TOP") then return point, y end
+  local _, h = Call(p, "GetHeight")
+  h = tonumber(h)
+  if not h or h <= 0 then return point, y end
+  local side = point:find("LEFT") and "LEFT" or point:find("RIGHT") and "RIGHT" or ""
+  return "TOP" .. side, y + (point:find("^BOTTOM") and h or h / 2)
+end
+
 local function SavePosition(p)
   local ok, point, _, relPoint, x, y = Call(p, "GetPoint", 1)
   if not ok or not point then return end
-  x, y = floor((tonumber(x) or 0) + 0.5), floor((tonumber(y) or 0) + 0.5)
+  relPoint = relPoint or point
+  local top, ty = TopPoint(p, point, tonumber(y) or 0)
+  x, y = floor((tonumber(x) or 0) + 0.5), floor((tonumber(ty) or 0) + 0.5)
+  if top ~= point then
+    p:ClearAllPoints()
+    if not pcall(p.SetPoint, p, top, UIParent, relPoint, x, y) then return end
+  end
   Call(p, "SetUserPlaced", false)
-  Put(p, "pos", { point, relPoint or point, x, y })
+  Put(p, "pos", { top, relPoint, x, y })
+end
+
+-- A place saved before minor 14 with a point below the top: moved up once, after the panel has its height (so it stays
+-- where the player sees it). Only a panel that stands at its saved place (not one docked to another frame, not mid-drag).
+function Style.PanelTop(p)
+  if type(p) ~= "table" or not p._opts or p._moving then return end
+  local pos = Get(p, "pos")
+  if type(pos) ~= "table" or type(pos[1]) ~= "string" or pos[1]:find("^TOP") then return end
+  local ok, point = Call(p, "GetPoint", 1)
+  if ok and point == pos[1] then SavePosition(p) end
 end
 
 function PanelMethods:SetTitle(text)
@@ -1923,7 +2134,7 @@ local function DonAlpha(self, alpha, plain)
   end
   for _, t in ipairs(self._donLines or {}) do Tint(t, DON.gold, frameA) end
   Tint(self._headerBg, DON.panel, plain and 0 or (alpha >= 0.35 and min(1, alpha + 0.08) or alpha))
-  Tint(self._divider, DON.gold, plain and 0.5 or max(0.5, frameA))
+  Tint(self._divider, DON.gold, self._game and 0 or plain and 0.5 or max(0.5, frameA))
   if self._logoEdge then for _, t in ipairs(self._logoEdge) do Tint(t, DON.gold, 1) end end
 end
 
@@ -1978,7 +2189,13 @@ local function PlainFont(fs, on)
   if not (ok and path and size) then return end
   flags = flags or ""
   if on then
-    if not flags:find("OUTLINE", 1, true) then
+    if on == "shadow" then
+      -- (minor 16) the game look: the font's own flags (no outline), only the shadow and the lighter grey below
+      if fs._plainFlags then
+        pcall(fs.SetFont, fs, path, size, fs._plainFlags)
+        fs._plainFlags = nil
+      end
+    elseif not flags:find("OUTLINE", 1, true) then
       fs._plainFlags = flags
       pcall(fs.SetFont, fs, path, size, flags ~= "" and (flags .. ",OUTLINE") or "OUTLINE")
       -- (minor 9, Daniel 02.11.2026: "..." where the level stood) the outline makes a text wider: one that FitText sized to
@@ -2034,12 +2251,12 @@ local function PlainWalk(frame, on, depth)
   end
 end
 function Style.PlainText(panel, on)
-  if panel then pcall(PlainWalk, panel, on and true or false, 0) end
+  if panel then pcall(PlainWalk, panel, on == "shadow" and on or (on and true or false), 0) end
 end
 
 function PanelMethods:SetChromeHidden(hidden)
   self._chromeHidden = hidden and true or false
-  Style.PlainText(self, self._chromeHidden)
+  Style.PlainText(self, self._chromeHidden) -- (minor 17) the game look with the outline too
   for _, b in ipairs(self._buttons or {}) do if b.SetPlain then b:SetPlain(self._chromeHidden) end end
   self:SetBackgroundAlpha(self._bgAlpha, true)
   -- (17.10., Daniel's screenshot: a thin frame, the step's box and gold bar stayed) the book look's two inner lines
@@ -2063,6 +2280,48 @@ function PanelMethods:SetGrip(grip)
   return self
 end
 function PanelMethods:IsChromeHidden() return self._chromeHidden == true end
+
+-- (minor 16) the game look, see the top of the file. It hides the chrome itself and shows it again when switched off
+-- unless plainAfter says the panel stays without background and frame.
+local GAME_GOLD = { 1, 0.82, 0 }
+function PanelMethods:SetGameLook(on, plainAfter)
+  on = on and true or false
+  if (self._game or false) ~= on then
+    self._game = on
+    local title = self._title
+    local okF, path, size, flags = pcall(title.GetFont, title)
+    if on then
+      if okF and path then
+        self._gameTitleFont = { path, size, flags }
+        pcall(title.SetFont, title, path, 14, "")
+      end
+      title:SetTextColor(GAME_GOLD[1], GAME_GOLD[2], GAME_GOLD[3], 1)
+    else
+      local f = self._gameTitleFont
+      if f then pcall(title.SetFont, title, f[1], f[2], f[3] or "") end
+      self._gameTitleFont = nil
+      local tc = self._look == "book" and BOOK.textPrimary or self._look == "don" and DON.hero or COLORS.textPrimary
+      title:SetTextColor(tc[1], tc[2], tc[3], 1)
+    end
+    if self._logo then
+      Call(self._logo, on and "Hide" or "Show")
+      for _, t in ipairs(self._logoEdge or {}) do Call(t, on and "Hide" or "Show") end
+      title:SetPoint("LEFT", self._header, "LEFT", on and S.titleX or (self._titleX or S.titleX), 0)
+    end
+  end
+  self:SetChromeHidden(on or plainAfter == true)
+  return self
+end
+function PanelMethods:IsGameLook() return self._game == true end
+function PanelMethods:SetButtonsFaded(faded)
+  faded = faded and true or false
+  if (self._buttonsFaded or false) == faded then return self end
+  self._buttonsFaded = faded
+  for _, b in ipairs(self._buttons or {}) do
+    if b ~= self._collapseButton then Call(b, "SetAlpha", faded and 0 or 1) end
+  end
+  return self
+end
 
 -- (minor 7) the panel keeps this height (nil: as high as its content); a content with opts.fill takes the rest
 function PanelMethods:SetFixedHeight(h)

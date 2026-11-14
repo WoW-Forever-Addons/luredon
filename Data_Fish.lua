@@ -66,4 +66,7 @@ ns.ZONE_FISH_CLASSIC = {
   [1452] = { { 13889, 30.8, "f" }, { 13759, 17.2, "f" }, { 13760, 17.2, "f" }, { 13890, 17.2, "f" }, { 13757, 12.1, "f" }, { 13758, 5.1, "f" }, { 13891, 0.4, "c" } },
 }
 -- Recorded catches not used (too few catches, or one reporter only; build_fish.py RECORDED):
---   [1453] only 8 catches (own 8, 20 needed): 6289 x6, 6291 x1, 6308 x1 of 8
+--   [1432] only 4 catches (own 4, 20 needed): 3820 x4 (not in CMaNGOS) of 4
+--   [1436] only 14 catches (own 14, 20 needed): 6308 x8, 6289 x4, 6358 x2 (not in CMaNGOS) of 14
+--   [1437] only 11 catches (own 11, 20 needed): 6361 x5 (not in CMaNGOS), 6358 x4 (not in CMaNGOS), 6359 x2 (not in CMaNGOS) of 11
+--   [1453] only 9 catches (own 9, 20 needed): 6289 x6, 6291 x1, 6308 x1, 6361 x1 (not in CMaNGOS) of 9
