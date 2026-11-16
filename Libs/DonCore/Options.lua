@@ -1,4 +1,4 @@
-local O = LibStub("DonCore-1.0"):NewModule("Options", 5)
+local O = LibStub("DonCore-1.0"):NewModule("Options", 6)
 
 ---------------------------------------------------------------------------
 -- DonCore module "Options" (minor 1, 01.11.2026, STYLEKIT_PLAN.md "Schritt 3"): one options window for every Don addon
@@ -999,7 +999,14 @@ O.Render = function() return Render() end
 -- Opening
 ---------------------------------------------------------------------------
 -- id: the addon to show (default: the one shown last, else the first); tab: its tab key
+-- (minor 6, 16.11.2026, Blizzard look, Luredon) spec.redirect(tab) -> true: the addon showed its options itself (the
+-- game's own settings page); every cog and O.Open of that addon then ends there and this window stays shut.
 function O.Open(id, tab)
+  local own = id and O.addons[id]
+  if own and type(own.redirect) == "function" then
+    local ok, done = pcall(own.redirect, tab)
+    if ok and done then return nil end
+  end
   if not O.win and not Create() then return nil end
   local st = O.state
   if id and O.addons[id] then st.addon = id end

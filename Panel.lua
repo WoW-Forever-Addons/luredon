@@ -347,12 +347,19 @@ local function Create()
 
   -- (1.3) the fishing book; (StyleKit 2 step 4) a button of DonCore's Kit over the whole width
   parts.book = CreateFrame("Frame", nil, UIParent)
-  parts.book.button = Kit.Button(parts.book, L["Fishing book"], { kind = "primary", small = true, onClick = function(_, button)
-    if button == nil or button == "LeftButton" then ns.ToggleBook() end
-  end })
-  parts.book.button:SetPoint("TOPLEFT", parts.book, "TOPLEFT", 0, 0)
-  parts.book.button:Layout(PartW() - 16)
-  parts.book.button:SetTooltip(L["Fishing book"], { L["Your sessions, every kind of fish and every zone with the skill it needs. /ld book"] })
+  -- (16.11.2026) the button in both looks: the Kit's, and the game's red button once the option blizzLook asks for it
+  -- (ApplyLook makes it then and shows the one that fits)
+  parts.book.make = function(kit)
+    local b = kit.Button(parts.book, L["Fishing book"], { kind = "primary", small = true, onClick = function(_, button)
+      if button == nil or button == "LeftButton" then ns.ToggleBook() end
+    end })
+    b:SetPoint("TOPLEFT", parts.book, "TOPLEFT", 0, 0)
+    b:Layout(PartW() - 16)
+    b:SetTooltip(L["Fishing book"], { L["Your sessions, every kind of fish and every zone with the skill it needs. /ld book"] })
+    return b
+  end
+  parts.book.kitButton = parts.book.make(Kit)
+  parts.book.button = parts.book.kitButton
   holders.book = Style.Content(panel, parts.book, 24, { gapBefore = Style.SPACING.section })
   rows.book = holders.book
 
@@ -386,7 +393,34 @@ local function Create()
 
   Style.CombatFade(panel, ns.db.combatFade)
   ns.panel = panel
+  ns.ApplyPanelLook()
 end
+
+-- (16.11.2026, Daniel: "das ist doch genau das was man fast durchgängig sieht") the small window in the game's look
+-- with the option blizzLook: Style's game look on a box with the game's tooltip border (DonCore Blizz PanelLook), the
+-- book button the game's red one. Switched live with the option.
+function ns.ApplyPanelLook()
+  if not panel then return end
+  local kit, blizz, Bz = ns.LookKit()
+  local was = panel.blizzLook and true or false
+  if blizz and Bz and Bz.PanelLook then
+    Bz.PanelLook(panel, true)
+    if not parts.book.blizzButton then
+      local ok, b = pcall(parts.book.make, kit)
+      if ok then parts.book.blizzButton = b end
+    end
+  elseif was then
+    local B = LibStub("DonCore-1.0"):Get("Blizz", 3)
+    if B then B.PanelLook(panel, false) end
+  end
+  local now = panel.blizzLook and parts.book.blizzButton and true or false
+  if now then parts.book.kitButton:Hide() else parts.book.kitButton:Show() end
+  if parts.book.blizzButton then if now then parts.book.blizzButton:Show() else parts.book.blizzButton:Hide() end end
+  parts.book.button = now and parts.book.blizzButton or parts.book.kitButton
+  parts.book.button:Layout(PartW() - 16)
+  if was ~= (panel.blizzLook and true or false) and ns.ApplyPanelSettings then ns.ApplyPanelSettings() end
+end
+function ns.PanelLook() return panel and panel.blizzLook and "blizzard" or "kit" end
 
 ---------------------------------------------------------------------------
 -- Content

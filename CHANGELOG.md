@@ -1,5 +1,9 @@
 # Changes
 
+## 1.7.0
+- **Luredon in the game's look:** the fishing book, the small window and the dialogs now look like the game's own windows: the game's frame, tabs, buttons, lists and scroll bars. The options open in the game's settings (Options > AddOns > Luredon). This is the new default; the Don look is one switch away under Appearance, "Windows in the game's look". Thanks for the wish!
+- **Zone list in the fishing book:** the groups say how many zones they hold ("Zones: 23").
+
 ## 1.6.4
 - **Cleaner text in narrow places:** text that is shrunk to fit keeps one font and size.
 

@@ -7,7 +7,7 @@ local L = ns.L
 -- marked, "Select all" and "Close", Esc closes); Luredon's own window with its text field is gone.
 ---------------------------------------------------------------------------
 function ns.ShowText(title, text)
-  local Kit = LibStub("DonCore-1.0"):Get("Kit", 11)
+  local Kit = ns.LookKit() -- (16.11.2026) with the option blizzLook the game's dialog
   if not Kit then return end
   local d = Kit.ShowCopy("Luredon  ·  " .. tostring(title or ""), L["Copy with Ctrl+A and Ctrl+C. Contains no character or realm names."],
     text or "", { selectAll = L["Select all"], close = L["Close"] })

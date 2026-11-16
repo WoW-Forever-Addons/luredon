@@ -15,7 +15,9 @@ local W = 360        -- dialog width (Kit units; the Kit scale applies, no own s
 local NUM = 18       -- the step number box
 local dialog
 
-local function Kit() return LibStub("DonCore-1.0"):Get("Kit", 11) end
+-- (16.11.2026) the kit the dialog was built with stays its kit (ns.LookKit: the game's templates with the option blizzLook)
+local built
+local function Kit() return built or (ns.LookKit()) end
 
 -- The interact key as the game names it ("F", "Mouse Button 4"), nil when none is bound.
 function ns.InteractKeyText()
@@ -60,6 +62,7 @@ local function Build()
   local K = Kit()
   if not K then return nil end
   local C, S = K.C, K.SIZE
+  built = K
   dialog = K.Dialog("LuredonIntro", { title = L["Fishing with Luredon"], icon = "Interface\\Icons\\Trade_Fishing", width = W })
   local body = dialog.body
   dialog.steps = {}

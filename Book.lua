@@ -320,6 +320,12 @@ end
 ---------------------------------------------------------------------------
 local Kit = LibStub("DonCore-1.0"):Get("Kit", 11)
 local KC, S = Kit and Kit.C, Kit and Kit.SIZE
+-- (15.11.2026, Daniel: "Das Blizzard layout von profitdon gefällt mir so gut, dass ich es optional über alle addons
+-- ausrollen möchte") the frames take their blocks from UI: the Kit, or with the option blizzLook the same blocks from
+-- the game's own templates (DonCore module Blizz). Picked when the book is built (PickUI); a build that fails with
+-- Blizzard's blocks is done again with the Kit. ns.BookLook() says which one runs and why.
+local UI = Kit
+local lookNote = "kit"
 local CIRCLE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local TABS = { "log", "atlas", "waters" }
 local TAB_TITLE = { log = L["Logbook"], atlas = L["Fish atlas"], waters = L["Waters"] }
@@ -717,7 +723,9 @@ local function ZoneListItems()
     if #rows == 0 then return end
     Sort(rows)
     local open = not collapsible or showHigher or q ~= ""
-    items[#items + 1] = { kind = "group", text = title, count = #rows, right = tostring(#rows), static = not collapsible or nil,
+    -- (16.11.2026, Daniel with a picture of "Your skill is enough 23": "verstehe ich hier nicht") the number says what
+    -- it counts: "Zones: 23"
+    items[#items + 1] = { kind = "group", text = title, n = #rows, right = L["Zones: %d"]:format(#rows), static = not collapsible or nil,
       collapsed = not open, foldable = collapsible or nil }
     if open then for _, r in ipairs(rows) do items[#items + 1] = r end end
   end
@@ -778,11 +786,11 @@ end
 local function OnList(list) return function(it, button) if it and type(it.onClick) == "function" then ns.Call("book click", it.onClick, list, button) end end end
 
 local function CreateLogPage(page)
-  P.ltiles = { Kit.Tile(page, { art = JMAP, height = TILE_H, onClick = function()
+  P.ltiles = { UI.Tile(page, { art = JMAP, height = TILE_H, onClick = function()
       local m = P.lmap and P.lmap.m
       if m and ns.OpenBook then ns.OpenBook("waters", m) end
     end }),
-    Kit.Tile(page, { height = TILE_H }), Kit.Tile(page, { height = TILE_H }), Kit.Tile(page, { height = TILE_H }) }
+    UI.Tile(page, { height = TILE_H }), UI.Tile(page, { height = TILE_H }), UI.Tile(page, { height = TILE_H }) }
   P.ltiles[1]._tipFn = function(t)
     local m = P.lmap and P.lmap.m
     if not m then return nil end
@@ -813,44 +821,44 @@ local function CreateLogPage(page)
     end
   end
   P.lmap = jm
-  P.lchips = Kit.ChipBar(page, { onChange = function(key) lfilter = key Refresh(true) end })
+  P.lchips = UI.ChipBar(page, { onChange = function(key) lfilter = key Refresh(true) end })
   for _, key in ipairs(FILTERS) do P.lchips:Add(key, FILTER_TITLE[key]) end
-  lists.log = Kit.List(page, { onClick = OnList("log") })
+  lists.log = UI.List(page, { onClick = OnList("log") })
 end
 
 local function CreateAtlasPage(page)
-  P.atiles = { Kit.Tile(page, { height = TILE_H }), Kit.Tile(page, { height = TILE_H }), Kit.Tile(page, { height = TILE_H }) }
-  P.achips = Kit.ChipBar(page, { onChange = function(key) afilter = key Refresh(true) end })
+  P.atiles = { UI.Tile(page, { height = TILE_H }), UI.Tile(page, { height = TILE_H }), UI.Tile(page, { height = TILE_H }) }
+  P.achips = UI.ChipBar(page, { onChange = function(key) afilter = key Refresh(true) end })
   for _, key in ipairs(AFILTERS) do P.achips:Add(key, AFILTER_TITLE[key]) end
-  lists.atlas = Kit.List(page)
-  P.detail = Kit.Detail(page, { onClose = function(d) P.overlay = nil d:Hide() end })
-  P.barList = Kit.BarList(page, {})
+  lists.atlas = UI.List(page)
+  P.detail = UI.Detail(page, { onClose = function(d) P.overlay = nil d:Hide() end })
+  P.barList = UI.BarList(page, {})
   P.barList:Hide()
 end
 
 local function CreateWatersPage(page)
   P.side = CreateFrame("Frame", nil, page)
-  Kit.Fill(P.side, KC.panel)
-  P.sideEdge = Kit.Tex(P.side, "ARTWORK", KC.goldMuted)
+  if not UI.blizzLook then UI.Fill(P.side, KC.panel) end
+  P.sideEdge = UI.Tex(P.side, "ARTWORK", KC.goldMuted)
   P.sideEdge:SetPoint("TOPRIGHT") P.sideEdge:SetPoint("BOTTOMRIGHT") P.sideEdge:SetWidth(1)
-  P.zoneBox = Kit.SearchBox(P.side, { placeholder = L["Find a zone"], onChange = function(text) zoneQuery = text or "" Refresh() end })
-  lists.zones = Kit.List(P.side, { onClick = OnList("zones"), onToggle = function() showHigher = not showHigher Refresh() end })
+  P.zoneBox = UI.SearchBox(P.side, { placeholder = L["Find a zone"], onChange = function(text) zoneQuery = text or "" Refresh() end })
+  lists.zones = UI.List(P.side, { onClick = OnList("zones"), onToggle = function() showHigher = not showHigher Refresh() end })
   P.main = CreateFrame("Frame", nil, page)
-  local hero = Kit.Hero(P.main, { height = HERO_H, column = 150 })
+  local hero = UI.Hero(P.main, { height = HERO_H, column = 150 })
   hero.map = CreateFrame("Frame", nil, hero.art)
   hero.map:SetAllPoints(hero.art)
   hero.map.tiles = {}
   P.hero = hero
-  P.stats = Kit.Text(P.main, "sub", KC.muted)
-  P.seg = Kit.Segmented(P.main, { items = { { value = "fish", text = L["Fish here"] }, { value = "sessions", text = L["Your sessions here"] } },
+  P.stats = UI.Text(P.main, "sub", KC.muted)
+  P.seg = UI.Segmented(P.main, { items = { { value = "fish", text = L["Fish here"] }, { value = "sessions", text = L["Your sessions here"] } },
     get = function() return zoneSeg end, set = function(v) zoneSeg = v Refresh(true) end })
-  P.segHere = Kit.Button(P.main, L["Back to my zone"], { small = true, onClick = function() selZone = nil Refresh(true) end })
-  P.fishHead = Kit.TableHead(P.main, { icon = true, columns = {
+  P.segHere = UI.Button(P.main, L["Back to my zone"], { small = true, onClick = function() selZone = nil Refresh(true) end })
+  P.fishHead = UI.TableHead(P.main, { icon = true, columns = {
     { key = "name", text = L["Fish"], grow = true },
     { key = "share", text = L["Share (CMaNGOS)"], width = 140 },
     { key = "own", text = L["Your share here"], width = 140 },
     { key = "caught", text = L["Caught here"], width = 70, justify = "RIGHT" } } })
-  lists.waters = Kit.List(P.main, { onClick = OnList("waters") })
+  lists.waters = UI.List(P.main, { onClick = OnList("waters") })
   P.fishHead:Bind(lists.waters)
 end
 
@@ -924,7 +932,7 @@ local function LayoutPages()
     local y = HERO_H + S.unit
     P.stats:ClearAllPoints()
     P.stats:SetPoint("TOPLEFT", P.main, "TOPLEFT", S.pad, -y - 4)
-    Kit.Fit(P.stats, mw - 2 * S.pad)
+    UI.Fit(P.stats, mw - 2 * S.pad)
     y = y + 22
     local hereW = P.segHere:IsShown() and math.min(P.segHere.natural or 140, 180) or 0
     P.seg:ClearAllPoints()
@@ -951,11 +959,32 @@ local function LayoutPages()
   end
 end
 
-local function Create()
-  if not Kit then return end
+local said
+function ns.SayLook()
+  if said or not ns.Print then return end
+  said = true
+  ns.Print(L["The fishing book could not be built in the game's look, it opens in the Don look. /ld diag says why."])
+end
+
+local function PickUI()
+  UI, lookNote = Kit, "kit"
+  if not (ns.db and ns.db.blizzLook) then return end
+  local Bz = LibStub("DonCore-1.0"):Get("Blizz", 1)
+  -- (the option is on by default: a client that lacks the templates keeps the Don look without a word; only a build
+  -- that fails speaks up, Create)
+  if not Bz then lookNote = "kit (no DonCore Blizz)" return end
+  local kit, miss = Bz.Kit()
+  if not kit then lookNote = "kit (missing: " .. tostring(miss) .. ")" return end
+  UI, lookNote = kit, "blizzard"
+end
+
+local function Build()
   ns.db.bookWin = type(ns.db.bookWin) == "table" and ns.db.bookWin or {}
-  book = Kit.Window("LuredonBook", { title = "Luredon", subtitle = L["Fishing book"], logo = "Interface\\Icons\\Trade_Fishing",
-    options = "Luredon", hint = "/ld options", footer = true, store = ns.db.bookWin, width = 980, height = 640,
+  local blizz = UI ~= Kit
+  book = UI.Window(blizz and "LuredonBookBlizz" or "LuredonBook", { title = "Luredon", subtitle = L["Fishing book"], logo = "Interface\\Icons\\Trade_Fishing",
+    options = "Luredon", hint = "/ld options", footer = true, store = ns.db.bookWin,
+    -- the Kit's windows show at 80 %, the game's frame at 100 %: about the same size on the screen
+    width = blizz and 860 or 980, height = blizz and 580 or 640, min = blizz and { 720, 420 } or nil,
     onTab = function(key) if book and book.built then ns.OpenBook(key) end end,
     onLayout = function(_, w, h, mode)
       P.bw, P.bh, P.mode = w, h, mode
@@ -986,6 +1015,24 @@ local function Create()
   ns.bookFrame = book
   book.built = true
   book:Layout()
+end
+
+local function Create()
+  if not Kit then return end
+  PickUI()
+  if UI == Kit then Build() return end
+  -- Blizzard's blocks: any error while building leaves the half-built window hidden and the Kit builds the book
+  local ok, err = pcall(Build)
+  if ok then return end
+  if book and book.Hide then pcall(book.Hide, book) end
+  book = nil
+  for k in pairs(P) do P[k] = nil end
+  for k in pairs(lists) do lists[k] = nil end
+  UI, lookNote = Kit, "kit (error: " .. tostring(err) .. ")"
+  -- (16.11.2026, Daniel: "Das Angelbuch ist aber noch das alte?") the fallback says so in the chat, once per session
+  if ns.RecordError then ns.RecordError("book blizz look", err) end
+  ns.SayLook()
+  Build()
 end
 
 ---------------------------------------------------------------------------
@@ -1224,6 +1271,19 @@ function ns.ToggleBook(which)
   ns.OpenBook(which)
 end
 function ns.BookTab() return tab end
+-- "blizzard" or "kit", with the reason when the option is on and the Kit had to build (diag)
+function ns.BookLook() return lookNote end
+-- the option blizzLook changed: the book is built again in the other look the next time it opens (it was open: now)
+function ns.BookReset()
+  if not book then return end
+  local open = book:IsShown()
+  book:Hide()
+  book = nil
+  ns.bookFrame = nil
+  for k in pairs(P) do P[k] = nil end
+  for k in pairs(lists) do lists[k] = nil end
+  if open then ns.OpenBook() end
+end
 function ns.BookParts() return P end -- (tests)
 function ns.BookZone() return selZone or HereZone() end
 function ns.BookFilter(key) if key then lfilter = key Refresh(true) end return lfilter end

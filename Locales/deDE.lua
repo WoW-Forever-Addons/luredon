@@ -499,3 +499,8 @@ L["Got it"] = "Verstanden"
 L["Show this again: Options, Casting and lures."] = "Erneut zeigen: Optionen, Auswerfen und Köder."
 L["Introduction"] = "Einführung"
 L["Shows the short introduction again: casting with the double right-click or the interact key, hooking with the interact key."] = "Zeigt die kurze Einführung noch einmal: Auswerfen mit Doppel-Rechtsklick oder Interaktionstaste, Einholen mit der Interaktionstaste."
+-- (15.11.2026) Blizzard look of the fishing book
+L["Windows in the game's look"] = "Fenster im Look des Spiels"
+L["Luredon's windows look like the game's own: the fishing book and the dialogs with the game's frame, tabs, buttons and lists, the small window on the game's tooltip ground. The options then open in the game's settings (Options > AddOns > Luredon) after a /reload."] = "Luredons Fenster sehen aus wie die des Spiels: Angelbuch und Dialoge mit Rahmen, Reitern, Knöpfen und Listen des Spiels, das kleine Fenster auf dem Tooltip-Grund des Spiels. Die Optionen öffnen sich dann nach einem /reload in den Einstellungen des Spiels (Optionen > AddOns > Luredon)."
+L["The fishing book could not be built in the game's look, it opens in the Don look. /ld diag says why."] = "Das Angelbuch ließ sich nicht im Look des Spiels bauen und öffnet im Don-Look. /ld diag sagt warum."
+L["Zones: %d"] = "Zonen: %d"

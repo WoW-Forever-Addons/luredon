@@ -1,4 +1,4 @@
-local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 25)
+local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 26)
 
 ---------------------------------------------------------------------------
 -- DonCore module "Kit" (minor 1, 01.11.2026, STYLEKIT_PLAN.md "Schritt 2"; minor 2, 02.11.2026: Kit.IconButton, the symbols from
@@ -39,6 +39,9 @@ local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 25)
 -- (minor 16, 04.11.2026, Era-Test, Daniel: "die zahlen sind sehr eng an dem / geschrieben besonders die 1") Kit.Fraction(a, b):
 -- "a / b" with a space on each side of the slash (Ring, ListRow progress); a Kit.Dialog always shows at Kit.scale times
 -- its own factor (d:SetOwnScale), a SetScale from outside before Show no longer stacks on top (Luredon's 1.5)
+-- (minor 26, 16.11.2026, Guildon's member list, Daniel: "wenn man die spalten sortiert kommt was komisches raus") a hidden
+-- TableHead (the narrow one of two) no longer gives its columns to the list on SetSort / Layout: only the head last bound
+-- with head:Bind(list) does (rows were drawn with the narrow columns, names overlapped, until a hover)
 -- (minor 25, 12.11.2026, Questdon's item buttons in the quest list, Daniel: "Gleiches kommt aus DonCore") Kit.ItemButton:
 -- a protected button that uses an item (icon, count, cooldown, a watch while a change waits for the end of a fight)
 -- (minor 24, 11.11.2026, Profitdon's Auswertung, Daniel's picture 122142: two lines without a name, one peak of 196g
@@ -79,7 +82,7 @@ local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 25)
 ---------------------------------------------------------------------------
 if not Kit then return end -- the same or a newer Kit is loaded already
 local Core = LibStub("DonCore-1.0")
-Kit.VERSION = 25
+Kit.VERSION = 26
 
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 local floor, ceil, max, min, abs, pi, sin, cos = math.floor, math.ceil, math.max, math.min, math.abs, math.pi, math.sin, math.cos
@@ -3050,9 +3053,10 @@ function Kit.TableHead(parent, opts)
       end
       Kit.Fit(b.text, max(1, c.w - aw))
     end
-    if self.list then self.list.columns, self.list.tableIcon = self.columns, opts.icon end
+    -- (minor 26) only the head the list is bound to (head:Bind) sets its columns, a hidden second head leaves them
+    if self.list and self.list._tableHead == self then self.list.columns, self.list.tableIcon = self.columns, opts.icon end
   end
-  function h:Bind(list) self.list = list list.columns, list.tableIcon = self.columns, opts.icon end
+  function h:Bind(list) self.list = list list._tableHead = self list.columns, list.tableIcon = self.columns, opts.icon end
   if opts.sortKey then h:SetSort(opts.sortKey, opts.desc) end
   return h
 end

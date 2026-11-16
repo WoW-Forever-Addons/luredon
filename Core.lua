@@ -3,6 +3,18 @@ local L = ns.L
 -- (31.10.2026, DONCORE_PLAN.md) Luredon's own view of DonCore's Style (Libs\DonCore\Style.lua); (02.11.2026, StyleKit 2
 -- step 4) the windows take their parts from DonCore's Kit, Luredon's own Kit.lua (own colours, PAL, button painters) is gone
 ns.Style = LibStub("DonCore-1.0"):Get("Style", 4):ForAddon()
+-- (16.11.2026, Daniel: the small window, the dialogs and the options "bitte auch noch anpassen") the kit that builds
+-- Luredon's windows: DonCore's Kit, or with the option blizzLook the same blocks from the game's own templates
+-- (DonCore module Blizz). Returns the kit, true when it is Blizzard's, and the Blizz module.
+function ns.LookKit()
+  local Core = LibStub("DonCore-1.0")
+  local Kit = Core:Get("Kit", 11)
+  if not (ns.db and ns.db.blizzLook) then return Kit, false end
+  local Bz = Core:Get("Blizz", 3)
+  local kit = Bz and Bz.Kit()
+  if kit then return kit, true, Bz end
+  return Kit, false
+end
 
 ns.defaults = {
   easyCast = true,
@@ -48,6 +60,9 @@ ns.defaults = {
   logbook = {},         -- 1.17: catch log (schema, fish per item ID, records), see Log.lua
   logPos = nil,         -- 1.17: position of the catch log window
   logCollapsed = false, -- 1.17: catch log window shows only its title bar
+  -- (15.11.2026) Luredon's windows from the game's own templates (DonCore Blizz); (16.11.2026, Daniel: "Finde ich genial
+  -- wie das aussieht. Sollte Standart sein") on by default; a client without the templates keeps the Don look quietly
+  blizzLook = true,
   hideUI = false,       -- (1.4) hide the whole interface while the line is out (asked once: askedHideUI)
   chatFeed = "private", -- (1.4.1) chat while the interface is hidden: "private", "all" or "off"
   fishingView = "off",  -- 1.17: while the line is out: "off", "compact" (title bar only) or "faded" (no background)

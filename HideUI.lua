@@ -513,7 +513,7 @@ local ASK_W = 380
 function ns.MaybeAskHideUI()
   if not ns.db or ns.db.askedHideUI or ns.db.hideUI then return false end
   if InCombatLockdown and InCombatLockdown() then return false end
-  local Kit = LibStub("DonCore-1.0"):Get("Kit", 11)
+  local Kit = ns.LookKit() -- (16.11.2026) with the option blizzLook the game's dialog and buttons
   if not Kit then return false end
   if not askPanel then
     local KC, S = Kit.C, Kit.SIZE

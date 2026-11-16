@@ -1,4 +1,4 @@
-local M = LibStub("DonCore-1.0"):NewModule("Settings", 2)
+local M = LibStub("DonCore-1.0"):NewModule("Settings", 3)
 if not M then return end
 local Core = LibStub("DonCore-1.0")
 
@@ -161,7 +161,12 @@ function M:Attach(addonName, ns)
 
   function ns.BuildSettings(spec)
     local Opt = Core:Get("Options", 1)
-    if Opt then
+    -- (minor 3, 16.11.2026, Blizzard look) spec.fullPages: the addon wants its pages in Blizzard's settings as without
+    -- the Options module (it opens them there, Options spec.redirect); DonCore's window keeps its tabs as well
+    if Opt and spec.fullPages then
+      ns.donOptionsId = spec.name
+      if not spec.ownWindow then Opt.FromSettings(spec, ns) end
+    elseif Opt then
       ns.donOptionsId = spec.name
       if not spec.ownWindow then Opt.FromSettings(spec, ns) end
       if not Available() then return nil end

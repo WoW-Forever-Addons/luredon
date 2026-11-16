@@ -236,6 +236,9 @@ local function Extras(out)
     Show(lb.schema), ns.LOG_SCHEMA, ns.logLocked and "locked (newer schema)" or "ok", kinds, ns.LOG_MAX, total,
     Show(rec.streak), Show(rec.fph), ns.LogStreak(), ns.logSkipped.secret or 0)
   out[#out + 1] = ("fishing view: mode %s, active %s"):format(Show(ns.db.fishingView), Show(ns.FishingViewActive and ns.FishingViewActive()))
+  -- (15.11.2026) the fishing book's look: "kit", "blizzard", or the Kit with the reason (a template the client lacks, an error)
+  out[#out + 1] = ("book look: option %s, built as %s, small window %s, options %s"):format(Show(ns.db.blizzLook), Show(ns.BookLook and ns.BookLook()),
+    Show(ns.PanelLook and ns.PanelLook()), Show(ns.OptionsLook and ns.OptionsLook()))
   -- (1.4) whole interface hidden while fishing
   local hs = ns.hideUIStats or {}
   out[#out + 1] = ("hide interface: option %s, asked %s, hidden now %s, hides %s, shows %s, failed %s, last back %s, ticker lines %s, api %s"):format(

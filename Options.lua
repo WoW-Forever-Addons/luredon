@@ -106,6 +106,12 @@ local PAGES = {
     { key = "panelScale", kind = "slider", name = "Size", tip = "Size of the window.", min = 0.6, max = 1.6, step = 0.05, onChange = ApplyPanel },
     { key = "panelAlpha", kind = "slider", name = "Background opacity", tip = "How opaque the window background is. Text stays fully visible.", min = 0, max = 1, step = 0.05, onChange = ApplyPanel },
     { key = "combatFade", name = "Dim in combat", tip = "Dims the whole window to 40 % while you are in combat.", onChange = ApplyPanel },
+    -- (15.11.2026, Daniel: "Das Blizzard layout von profitdon ... optional über alle addons ausrollen"; CurseForge wish
+    -- OGAmadeuz 15.11.: "a more Blizzard styled theme") the fishing book from the game's own templates (DonCore Blizz)
+    { key = "blizzLook", name = "Windows in the game's look", tip = "Luredon's windows look like the game's own: the fishing book and the dialogs with the game's frame, tabs, buttons and lists, the small window on the game's tooltip ground. The options then open in the game's settings (Options > AddOns > Luredon) after a /reload.", onChange = function()
+      if ns.BookReset then ns.BookReset() end
+      if ns.ApplyPanelLook then ns.ApplyPanelLook() end
+    end },
     -- (04.11.2026, Era-Test) the minimap button's switch, DonCore's item in the game's language (MinimapButton.lua)
     ns.MinimapOption(),
     -- 1.15: same place as in the other addons (DESIGN.md); the start page keeps its tool.
@@ -277,6 +283,9 @@ local function RegisterWindow()
     status = Guard("option status", Status),
     help = Guard("option help", HelpText),
     buttonKey = function(section) return "button:" .. tostring(section) end,
+    -- (16.11.2026, DonCore Options 6) with the option blizzLook the options are the game's own settings pages: every
+    -- cog and /ld options ends there (the pages are built in full at login, Build below)
+    redirect = function() return ns.OpenGameOptions and ns.OpenGameOptions() or false end,
   })
   if ok and type(spec) == "table" then windowSpec = spec return spec end
   if not ok and ns.RecordError then ns.RecordError("option window", spec) end
@@ -290,12 +299,26 @@ local function SettingsSpec(ownWindow)
 end
 ns.SettingsSpec = SettingsSpec -- (tests: the full pages Luredon builds without the Options module)
 
+local fullPages = false
 local function Build()
-  category = ns.BuildSettings(SettingsSpec(RegisterWindow() ~= nil))
+  local spec = SettingsSpec(RegisterWindow() ~= nil)
+  -- (16.11.2026) the game's look: the full pages in the game's settings although DonCore's window is there
+  -- (only where the client has the templates: without them the windows are Don's and so is the options window)
+  if ns.db and ns.db.blizzLook and select(2, ns.LookKit()) then spec.fullPages, fullPages = true, true end
+  category = ns.BuildSettings(spec)
 end
+-- true when the game's settings were opened at Luredon (option blizzLook, pages built in full at login, not in combat)
+function ns.OpenGameOptions()
+  if not (ns.db and ns.db.blizzLook and fullPages and category and Settings and Settings.OpenToCategory) then return false end
+  if InCombatLockdown and InCombatLockdown() then ns.Print(L["Not possible in combat."]) return true end
+  Settings.OpenToCategory(category:GetID())
+  return true
+end
+function ns.OptionsLook() return fullPages and "game settings" or "don window" end
 
 -- tab: optional tab key of the window ("casting", "sound", "gear", "session", "appearance", "tools")
 function ns.OpenOptions(tab)
+  if ns.OpenGameOptions and ns.OpenGameOptions() then return end -- (16.11.2026) the game's look: the game's settings
   local Opt = OptionsModule()
   if Opt and Opt.Open and RegisterWindow() and Opt.Open(OPTIONS_ID, tab) then return end
   if InCombatLockdown() then ns.Print(L["Not possible in combat."]) return end
