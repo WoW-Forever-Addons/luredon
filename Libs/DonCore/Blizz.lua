@@ -1,4 +1,4 @@
-local Bz = LibStub("DonCore-1.0"):NewModule("Blizz", 4)
+local Bz = LibStub("DonCore-1.0"):NewModule("Blizz", 5)
 if not Bz then return end
 
 ---------------------------------------------------------------------------
@@ -17,12 +17,30 @@ if not Bz then return end
 -- (minor 2, 16.11.2026, learned in Profitdon after the copy, handover/doncore.md "16.11.2026 Gelernt in Profitdon")
 -- Bz.Settle and Bz.ClampScroll after every new list (a list set in the frame its window opens in stayed empty until
 -- the wheel; a kept scroll place could lie past the end of a shorter list), Tab leaves an EditBox as in the Kit.
+-- (minor 5, 16.11.2026, Daniel: Blizzard look as the default for all Don addons) every block the windows of Finddon,
+-- Vitaldon, Geardon, Dropdon, Guildon, Guildon_Crafts, Golddon, Questdon (quest book, dialogs) and Profitdon take from
+-- the Kit has a counterpart here with the same calls: ListRow, GroupHeader, SubRow, ZoneRow, OptionRow, Card, CardRow,
+-- ItemRow, DoneRow, WarnRow, Sidebar, Box, ScrollArea, MoneyBox, CoinBox, Columns, ProgressBar, Pill, ChainMark,
+-- Radio, Chip, ItemIcon, ItemGrid, ItemButton, SecureButton, Menu, TextBox. The List knows the Kit's kinds sub, zone,
+-- cards, trow, done and an addon's own kinds (opts.kinds = { name = { make, h } }), l:ScrollTo; row items carry
+-- radio, chain, pill, dots, ring and badgeRight as in the Kit. The Table folds groups (onToggle) and scrolls (ScrollTo).
+-- Rows the Kit builds keep their logic and get the game's look (fonts, quest log highlight, tooltip edge).
+-- Bz.ROW_H and Bz.K as in Profitdon's own copy.
+-- Also in minor 5, from the rollout (doncore_nachtrag): ChipBar as the Kit's (active table, multi, Add with count and
+-- copts, Paint, Place, ContentWidth, offset and wheel, onChange(key, on, bar, button)), Chip:SetCount(text, colour),
+-- Dropdown (Update, Choose, SetTooltip over the template's, headers not to choose, right texts, SetDisabled), Detail
+-- (actions, Item returning text and symbol, Progress, FitLines, the level in the head), Window (mode by width as
+-- Kit.Mode at the Kit's scale: Bz.Mode; opts.buttons -> f.extra; SetOwnScale; SetLocked and the Kit's lock by the
+-- header's mouse; the status on the left of the strip), Hint, TableHead (head.cells made at once, a hidden head stays
+-- hidden), Button.blizz.
 ---------------------------------------------------------------------------
 local Kit = LibStub("DonCore-1.0"):Get("Kit", 25)
 local K = setmetatable({}, { __index = Kit or {} })
 Bz.kit = K
+Bz.K = K -- (Profitdon's name for the kit)
 K.blizzLook = true -- a caller can tell the two kits apart
-Bz.VERSION = 4
+Bz.VERSION = 5
+Bz.ROW_H = 24 -- the row height of Bz.List without opts.rowHeight (Profitdon's craft and sell lists)
 if Bz.light == nil then Bz.light = true end
 
 local function Try(f, ...)
@@ -140,6 +158,30 @@ function Bz.ClampScroll(box)
   if not can or p < 0 then if p ~= 0 then box:ScrollToBegin(nope) end
   elseif p > 1 then box:ScrollToEnd(nope) end
 end
+-- (minor 5) the Kit's mode of a window by its width (Kit.Mode: overlay under 960, rail under 800 at the Kit's scale).
+-- The game's frame shows at 100 %, a Kit window at Kit.scale (0.8): the same room on screen is width / scale in the
+-- Kit's units, so the frame is measured as the Kit would measure a window of its size on screen.
+function Bz.Mode(w)
+  local sc = (Kit and Kit.GetScale and tonumber(Kit.GetScale())) or 0.8
+  if sc <= 0 then sc = 0.8 end
+  w = (tonumber(w) or 0) / sc
+  if Kit and Kit.Mode then return Kit.Mode(w) end
+  return w < 800 and "rail" or w < 960 and "overlay" or "full"
+end
+-- (minor 5) the Kit's l:ScrollTo(item or index, top) on the game's scroll box: the item into view (nearest edge), top =
+-- true puts it at the top; true when found
+function Bz.ScrollTo(box, items, it, top)
+  if type(box) ~= "table" or type(items) ~= "table" then return false end
+  local index
+  for i, x in ipairs(items) do if x == it or i == it then index = i break end end
+  if not index then return false end
+  local SBC = type(ScrollBoxConstants) == "table" and ScrollBoxConstants or {}
+  local align = top and SBC.AlignBegin or SBC.AlignNearest
+  local nope = SBC.NoScrollInterpolation or true
+  if type(box.ScrollToElementDataIndex) == "function" then pcall(box.ScrollToElementDataIndex, box, index, align, nope) end
+  box.scrolledTo = index -- (tests)
+  return true
+end
 function Bz.Settle(box)
   if type(box) ~= "table" or box.settling or type(box.FullUpdate) ~= "function" then return end
   box.settling = true
@@ -191,10 +233,18 @@ function Bz.Window(name, opts)
   local function drag(h)
     h:EnableMouse(true)
     h:RegisterForDrag("LeftButton")
-    h:SetScript("OnDragStart", function() f:StartMoving() end)
+    -- (minor 5) not while locked: f:SetLocked(on), or the Kit's way, the header (title strip) without the mouse
+    h:SetScript("OnDragStart", function()
+      if f._locked then return end
+      local hd = f.header
+      if hd and hd ~= f and hd.IsMouseEnabled and not hd:IsMouseEnabled() then return end
+      f:StartMoving()
+    end)
     h:SetScript("OnDragStop", function() f:StopMovingOrSizing() f:Save() end)
   end
   drag(f)
+  function f:SetLocked(on) self._locked = on and true or nil return self end
+  function f:IsLocked() return self._locked == true end
   local tc = Part(f, "TitleContainer")
   if tc then drag(tc) end
   local close = Part(f, "CloseButton")
@@ -312,6 +362,7 @@ end
 local GOLD = { 1, 0.82, 0 }
 local WHITE = { 1, 1, 1 }
 local GREY = { 0.6, 0.6, 0.6 }
+local Col3 -- (minor 5) declared here for the blocks above its body (Dropdown)
 local function RGB(c, d)
   if type(c) == "table" and tonumber(c[1]) then return c[1], c[2], c[3] end
   d = d or WHITE
@@ -352,6 +403,7 @@ function K.Button(parent, text, opts)
   opts = opts or {}
   local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
   b:SetHeight(22)
+  b.blizz = true -- (minor 5) a caller can tell it from the Kit's button
   b._onClick = opts.onClick
   local plain = b.SetText
   function b:SetText(t)
@@ -363,9 +415,18 @@ function K.Button(parent, text, opts)
   end
   function b:Layout(w) self._fixed = w self:SetWidth(w) end
   function b:SetDisabled(off) self._disabled = off and true or nil self:SetEnabled(not off) return self end
+  function b:IsDisabled() return self._disabled == true end
   function b:SetKind() end
+  -- (minor 5) held down while selected (a chip, an active choice), as the Kit's SetSelected
+  function b:SetSelected(on)
+    self._selected = on and true or nil
+    if on then self:LockHighlight() else self:UnlockHighlight() end
+    return self
+  end
+  function b:IsSelected() return self._selected == true end
   WithTip(b)
-  b:SetScript("OnClick", function(self)
+  if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
+  b:SetScript("OnClick", function(self, button)
     if self._disabled then return end
     if opts.confirm and not self._armed then
       self._armed, self._plain = true, self._label
@@ -374,7 +435,7 @@ function K.Button(parent, text, opts)
       return
     end
     if self._armed then self._armed = nil plain(self, self._plain or "") end
-    if self._onClick then Try(self._onClick, self) end
+    if self._onClick then Try(self._onClick, self, button) end
   end)
   b:SetText(text)
   if opts.tooltip then b:SetTooltip(opts.tooltip, opts.tooltipLines) end
@@ -428,19 +489,42 @@ function K.EditBox(parent, opts)
   local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
   e:SetSize(opts.width or 60, 20)
   e:SetAutoFocus(false)
-  if opts.numeric then e:SetNumeric(true) e:SetJustifyH("CENTER") e:SetMaxLetters(opts.maxLetters or 7) end
+  if opts.numeric then e:SetNumeric(true) e:SetJustifyH("CENTER") e:SetMaxLetters(opts.maxLetters or 7)
+  elseif opts.maxLetters then e:SetMaxLetters(opts.maxLetters) end
+  -- (minor 5) the Kit's placeholder: a quiet text while the box is empty
+  e.hint = e:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  e.hint:SetPoint("LEFT", 2, 0)
+  if e.hint.SetWordWrap then e.hint:SetWordWrap(false) end
+  e.hint:SetText(opts.placeholder or "")
+  local function Hint(self)
+    if (self:GetText() or "") == "" and (opts.placeholder or "") ~= "" and not self._focus then self.hint:Show() else self.hint:Hide() end
+  end
   function e:SetValue(v)
     self._setting = true
     self:SetText(v ~= nil and tostring(v) or "")
     self._setting = nil
     if self.SetCursorPosition then self:SetCursorPosition(0) end
+    Hint(self)
   end
   function e:GetValue() local t = self:GetText() if opts.numeric then return tonumber(t) end return t end
-  function e:Layout(w) self:SetWidth(w) end
+  function e:Layout(w) self:SetWidth(w) if self.hint.SetWidth then self.hint:SetWidth(math.max(4, w - 6)) end end
   function e:SetTooltip(title) self._tip = title and title ~= "" and { title } or nil end
+  -- (minor 5) as the Kit: Tab goes on to this box
+  function e:SetNext(other) self.nextBox = other return self end
+  -- (minor 5) the Kit's states: greyed and shut while disabled; selection means nothing for a box
+  function e:SetDisabled(off)
+    self._disabled = off and true or nil
+    if self.SetEnabled then self:SetEnabled(not off) end
+    self:SetAlpha(off and 0.5 or 1)
+    return self
+  end
+  function e:IsDisabled() return self._disabled == true end
+  function e:SetSelected(on) self._selected = on and true or nil return self end
+  function e:IsSelected() return self._selected == true end
   e:SetScript("OnEnter", function(self) if self._tip then Tip(self, self._tip[1]) end end)
   e:SetScript("OnLeave", HideTip)
   e:SetScript("OnTextChanged", function(self, user)
+    Hint(self)
     if self._setting or user == false then return end
     if opts.onChange then Try(opts.onChange, self:GetText() or "", self) end
   end)
@@ -448,18 +532,35 @@ function K.EditBox(parent, opts)
   e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
   -- Tab leaves the box as in the Kit: the next box when one is set, else out of it; leaving commits (OnEditFocusLost)
   e:SetScript("OnTabPressed", function(self) if self.nextBox and self.nextBox.SetFocus then self.nextBox:SetFocus() else self:ClearFocus() end end)
-  e:SetScript("OnEditFocusGained", function(self) self._focus = true if self.HighlightText then self:HighlightText() end end)
+  e:SetScript("OnEditFocusGained", function(self)
+    self._focus = true
+    self.hint:Hide()
+    if self.HighlightText and opts.selectAll ~= false then self:HighlightText() end
+  end)
   e:SetScript("OnEditFocusLost", function(self)
     self._focus = nil
     if self.HighlightText then self:HighlightText(0, 0) end
+    -- (minor 5) a number is held between opts.min and opts.max when the box is left, as in the Kit
+    if opts.numeric and (opts.min or opts.max) then
+      local n = tonumber(self:GetText())
+      if n then
+        local c = math.max(tonumber(opts.min) or n, math.min(tonumber(opts.max) or n, n))
+        if c ~= n then self:SetValue(c) end
+      end
+    end
+    Hint(self)
     if opts.onLeave then Try(opts.onLeave, self) end
   end)
+  Hint(e)
   return e
 end
 
 ---------------------------------------------------------------------------
--- Dropdown: the game's dropdown button with a radio menu. opts.items (list or function), get(), set(value).
+-- Dropdown: the game's dropdown button with a radio menu. opts.items (list or function), get(), set(value, d).
 -- The template comes from Blizzard_Menu; where the client lacks it the kit's dropdown stands in.
+-- (minor 5) the Kit's calls: d:Update(v) (the shown value; nil asks opts.get), d:Choose(v), d.value, d:Layout(w),
+-- d:SetTooltip(title, lines) (the template's own SetTooltip takes a function: overwritten here), d:SetDisabled(off);
+-- items { header = true, text } are a title, not to choose; item.right (item.rightColor) stands after the text
 ---------------------------------------------------------------------------
 function K.Dropdown(parent, opts)
   opts = opts or {}
@@ -468,60 +569,119 @@ function K.Dropdown(parent, opts)
   end
   local d = CreateFrame("DropdownButton", nil, parent, "WowStyle1DropdownTemplate")
   d:SetHeight(22)
+  d.blizz = true
+  local function Items()
+    local list = opts.items
+    if type(list) == "function" then
+      local ok, got = pcall(list)
+      list = ok and got or nil
+    end
+    return type(list) == "table" and list or {}
+  end
+  local function Label(it)
+    local t = it.text or tostring(it.value)
+    if it.right ~= nil and it.right ~= "" then
+      local r, g, b = Col3(it.rightColor, GREY)
+      t = t .. ("   |cff%02x%02x%02x%s|r"):format(math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), tostring(it.right))
+    end
+    return t
+  end
   local function build(_, root)
-    local items = type(opts.items) == "function" and opts.items() or opts.items or {}
-    for _, it in ipairs(items) do
-      root:CreateRadio(it.text or tostring(it.value), function() return opts.get and opts.get() == it.value end,
-        function() if opts.set then Try(opts.set, it.value) end end)
+    for _, it in ipairs(Items()) do
+      if it.header then
+        if root.CreateTitle then root:CreateTitle(it.text or "") end
+      else
+        root:CreateRadio(Label(it), function() return d.value == it.value end, function() d:Choose(it.value) end)
+      end
     end
   end
   if d.SetupMenu then d:SetupMenu(build) end
+  d.menuBuild = build -- (tests)
+  function d:Update(v)
+    if v == nil and opts.get then
+      local ok, got = pcall(opts.get)
+      if ok then v = got end
+    end
+    self.value = v
+    local text = ""
+    for _, it in ipairs(Items()) do if not it.header and it.value == v then text = it.text or tostring(v) end end
+    self.shownText = text
+    if self.OverrideText then pcall(self.OverrideText, self, text)
+    elseif self.GenerateMenu then pcall(self.GenerateMenu, self) end
+  end
+  function d:Choose(v)
+    self:Update(v)
+    if opts.set then Try(opts.set, v, self) end
+  end
   -- the caller lays it out on every draw: the shown value follows
   function d:Layout(w)
+    self._w = w
     self:SetWidth(w)
-    if self.GenerateMenu then pcall(self.GenerateMenu, self) end
+    self:Update(self.value)
   end
+  function d:SetDisabled(off) self._disabled = off and true or nil if self.SetEnabled then self:SetEnabled(not off) end return self end
+  function d:IsDisabled() return self._disabled == true end
+  WithTip(d) -- d:SetTooltip(title, lines) as the Kit's, over the template's own
+  d:Layout(opts.width or 160)
   return d
 end
 
 ---------------------------------------------------------------------------
--- ChipBar: the lists of one tab as a row of the game's buttons, the active one gold and held down
+-- ChipBar: a row of the game's small buttons, the active ones held down with white text. The Kit's calls (minor 5):
+-- bar:Add(key, text, count, copts) (copts.onClick: a chip of its own without selection, copts.add), bar.active =
+-- { [key] = true } (opts.multi: several), bar:SetActive(key, on), bar:Paint(), bar:Place() (a hidden chip takes no
+-- room), bar:ContentWidth(), bar:Chip(key), bar:Layout(w), bar.offset (the wheel scrolls the chips sideways);
+-- opts.onChange(key, on, bar, button)
 ---------------------------------------------------------------------------
 function K.ChipBar(parent, opts)
   opts = opts or {}
   local bar = CreateFrame("Frame", nil, parent)
-  bar:SetHeight(22)
-  bar.chips = {}
-  function bar:Add(key, text)
-    local chip = K.Button(self, text, { onClick = function()
-      self:SetActive(key)
-      if opts.onChange then Try(opts.onChange, key, true, self) end
-    end })
-    chip.key, chip.name = key, text
-    function chip:SetCount(n) self:SetText(n and ("%s (%d)"):format(self.name, n) or self.name) end
+  bar:SetHeight(24)
+  if bar.SetClipsChildren then bar:SetClipsChildren(true) end
+  if bar.EnableMouseWheel then bar:EnableMouseWheel(true) end
+  bar.chips, bar.offset, bar.active, bar.blizz = {}, 0, {}, true
+  function bar:Add(key, text, count, copts)
+    copts = copts or {}
+    local chip = K.Chip(self, text, function(c, button)
+      if copts.onClick then Try(copts.onClick, c, button) return end
+      if opts.multi then self.active[key] = not self.active[key] or nil
+      else self.active = { [key] = true } end
+      self:Paint()
+      if opts.onChange then Try(opts.onChange, key, self.active[key] == true, self, button) end
+    end, copts)
+    if count ~= nil then chip:SetCount(count) end
+    chip.key = key
     self.chips[#self.chips + 1] = chip
+    chip:SetSelected(self.active[key])
+    self:Place()
     return chip
   end
-  function bar:SetActive(key)
-    self.active = key
-    for _, c in ipairs(self.chips) do
-      local on = c.key == key
-      if on then c:LockHighlight() else c:UnlockHighlight() end
-      local fs = c.GetFontString and c:GetFontString()
-      if type(fs) == "table" and fs.SetTextColor then if on then fs:SetTextColor(1, 1, 1) else fs:SetTextColor(1, 0.82, 0) end end
-    end
+  function bar:SetActive(key, on)
+    if not opts.multi then self.active = {} end
+    if key ~= nil then self.active[key] = on ~= false or nil end
+    self:Paint()
   end
-  function bar:Chip(key) for _, c in ipairs(self.chips) do if c.key == key then return c end end end
-  function bar:Layout(w)
-    self._w = w
-    self:SetWidth(w)
-    local x = 0
+  function bar:Paint() for _, c in ipairs(self.chips) do c:SetSelected(type(self.active) == "table" and self.active[c.key]) end end
+  function bar:ContentWidth()
+    local w, n = 0, 0
+    for _, c in ipairs(self.chips) do
+      if c:IsShown() then w = w + (tonumber(c:GetWidth()) or 0) + (n > 0 and 4 or 0) n = n + 1 end
+    end
+    return w
+  end
+  function bar:Place()
+    local room = self._w or tonumber(self:GetWidth()) or 0
+    self.offset = math.max(0, math.min(tonumber(self.offset) or 0, math.max(0, self:ContentWidth() - room)))
+    local x = -self.offset
     for _, c in ipairs(self.chips) do
       c:ClearAllPoints()
       c:SetPoint("LEFT", self, "LEFT", x, 0)
-      if c:IsShown() then x = x + (c:GetWidth() or 60) + 4 end
+      if c:IsShown() then x = x + (tonumber(c:GetWidth()) or 0) + 4 end
     end
   end
+  function bar:Chip(key) for _, c in ipairs(self.chips) do if c.key == key then return c end end end
+  function bar:Layout(w) self._w = w self:SetWidth(w) self:Place() end
+  bar:SetScript("OnMouseWheel", function(self, d) self.offset = (self.offset or 0) - d * 40 self:Place() end)
   return bar
 end
 
@@ -551,6 +711,12 @@ end
 -- active, onRemove, edit = { key, value, onCommit, tip }, tipLines, tooltip) and "note" (text, color, warn).
 ---------------------------------------------------------------------------
 local ROW, NOTE, HEAD = 36, 22, 24
+-- the List's sizes and the parts of its rows (filled below the List); MAKER: kinds whose rows the Kit builds and this
+-- module dresses (minor 5: sub, zone, cards, trow, done), filled at the end of the file
+local LIST_BAR = 20
+local KIND_H = { row = 36, group = 28, divider = 20, note = 28, table = 28, itemcards = 72,
+  sub = 28, zone = 28, cards = 132, trow = 36, done = 22 }
+local PART, MAKER = {}, {}
 local function Visible(cols, w)
   local out = {}
   for i, c in ipairs(cols or {}) do if i > 1 and not (c.minWidth and w < c.minWidth) then out[#out + 1] = c end end
@@ -605,6 +771,16 @@ local function FillRow(tbl, r, it)
     r:SetScript("OnClick", function(self, button)
       local cur = self.item
       if not cur then return end
+      -- (minor 5, Golddon's zones) a group folds as in the List: opts.onToggle(item, table)
+      if cur.kind == "group" and not cur.static and not cur.onClick then
+        cur.collapsed = not cur.collapsed
+        if tbl.opts.onToggle then Try(tbl.opts.onToggle, cur, tbl) end
+        return
+      end
+      if cur.kind ~= "trow" and cur.kind ~= "note" and cur.kind ~= nil and not tbl.opts.onClick then
+        if cur.onClick then Try(cur.onClick, self, button) end
+        return
+      end
       if cur.itemID and type(IsModifiedClick) == "function" and IsModifiedClick("CHATLINK") and type(ChatEdit_InsertLink) == "function" then
         local _, link = Call(C_Item and C_Item.GetItemInfo or GetItemInfo, cur.itemID)
         if link and ChatEdit_InsertLink(link) then return end
@@ -616,6 +792,29 @@ local function FillRow(tbl, r, it)
   end
   r.item = it
   local w = (tbl._w or 400) - 24
+  -- (minor 5) other kinds of the List in a table (a group over its rows): drawn by the List's part, the row's own
+  -- texts hidden
+  r.parts = r.parts or {}
+  local other = it.kind ~= nil and it.kind ~= "trow" and it.kind ~= "note" and PART[it.kind] and it.kind or nil
+  for k, p in pairs(r.parts) do if k ~= other then p:Hide() end end
+  if other then
+    r.icon:Hide() r.sub:Hide() r.title:Hide() r.sel:Hide() r.mark:Hide() r.rule:Hide()
+    for _, fs in ipairs(r.cells) do fs:Hide() end
+    if r.x then r.x:Hide() end
+    if r.edit then r.edit:Hide() end
+    r.hl:SetAlpha((other == "group" and not it.static) and 0.5 or 0)
+    local p = r.parts[other]
+    if not p then
+      p = CreateFrame("Frame", nil, r)
+      p:SetAllPoints()
+      PART[other].build(p)
+      r.parts[other] = p
+    end
+    p:Show()
+    PART[other].fill(p, it, w + 4, it.h or KIND_H[other] or ROW, tbl)
+    return
+  end
+  r.title:Show()
   if it.kind == "note" then
     r.icon:Hide() r.sub:Hide() r.sel:Hide() r.mark:Hide() r.rule:Hide()
     for _, fs in ipairs(r.cells) do fs:Hide() end
@@ -745,7 +944,9 @@ function K.Table(parent, opts)
   t.bar:SetPoint("BOTTOMLEFT", t.box, "BOTTOMRIGHT", 5, 2)
   local view = CreateScrollBoxListLinearView()
   if view.SetElementExtentCalculator then
-    view:SetElementExtentCalculator(function(_, it) return it.h or (it.kind == "note" and NOTE or ROW) end)
+    view:SetElementExtentCalculator(function(_, it)
+      return it.h or (it.kind == "note" and NOTE) or (it.kind ~= "trow" and it.kind ~= nil and PART[it.kind] and KIND_H[it.kind]) or ROW
+    end)
   else view:SetElementExtent(ROW) end
   view:SetElementFactory(function(factory)
     factory("Button", function(row, it) Try(FillRow, t, row, it) end)
@@ -869,6 +1070,8 @@ function K.Table(parent, opts)
     self:Show0()
   end
   function t:SetEmpty(text) if self.emptyText ~= text then self.emptyText = text self:Show0() end end
+  -- (minor 5) as the Kit's list: the item (or its index) into view, top = true at the top
+  function t:ScrollTo(it, top) return Bz.ScrollTo(self.box, self.items, it, top) end
   function t:Layout(w, h)
     local changed = self._w ~= w
     self._w, self._h = w, h
@@ -1003,17 +1206,50 @@ function K.Window(name, opts)
       else bw, bh = w - 22, h - 64 - (footer and 30 or 10) end
       win.body:SetSize(math.max(10, bw), math.max(10, bh))
       win._w = w
-      if opts.onLayout then opts.onLayout(win, math.max(10, bw), math.max(10, bh), "full") end
+      -- (minor 5) the Kit's mode by width (full, overlay, rail), the width taken at the Kit's scale (Bz.Mode)
+      win.mode = Bz.Mode(w)
+      if win.status then win.status:SetWidth(math.max(20, math.floor((w - 40) * (win.statusShare or 0.6)))) end
+      if opts.onLayout then opts.onLayout(win, math.max(10, bw), math.max(10, bh), win.mode) end
     end })
   f.opts, f.tabs, f.blizz = opts, {}, true
+  -- (minor 5, Daniel 16.11.2026: Gildenwappen "einbauen") f.logo as in the Kit: a frame over the round portrait with
+  -- f.logo.tex (the addon's mark, an emblem) and f.logo.mask (the portrait's round mask, for textures the addon adds)
+  if opts.logo then
+    local pc = type(f.PortraitContainer) == "table" and f.PortraitContainer or nil
+    local portrait = (pc and pc.portrait) or f.portrait
+    local lg = CreateFrame("Frame", nil, pc or f)
+    if type(portrait) == "table" and portrait.GetPoint then lg:SetAllPoints(portrait)
+    else lg:SetSize(60, 60) lg:SetPoint("TOPLEFT", f, "TOPLEFT", -5, 7) end
+    if lg.SetFrameLevel and (pc or f).GetFrameLevel then lg:SetFrameLevel(((pc or f):GetFrameLevel() or 1) + 1) end
+    lg.tex = lg:CreateTexture(nil, "ARTWORK")
+    lg.tex:SetAllPoints()
+    lg.tex:SetTexture(opts.logo)
+    if type(lg.CreateMaskTexture) == "function" then
+      local m = lg:CreateMaskTexture()
+      if type(m) == "table" then
+        m:SetAllPoints()
+        m:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        if lg.tex.AddMaskTexture then lg.tex:AddMaskTexture(m) end
+        lg.mask = m
+      end
+    end
+    f.logo = lg
+  end
   f.atticX = attic and 56 or 0
   f.body = CreateFrame("Frame", nil, f)
   if attic then f.body:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -24) else f.body:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -64) end
   if footer then
+    -- (minor 5, Geardon) f.footer as in the Kit: a frame over the strip under the inset for the addon's own texts
+    f.footer = CreateFrame("Frame", nil, f)
+    f.footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 3)
+    f.footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -24, 3)
+    f.footer:SetHeight(24)
+    -- (minor 5, Vitaldon) the status on the left (f.statusShare of the strip, default 0.6), the right part of the
+    -- strip stays free for the footer's own texts
     f.status = f:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     f.status:SetJustifyH("LEFT") f.status:SetWordWrap(false)
     f.status:SetPoint("BOTTOMLEFT", 12, 9)
-    f.status:SetPoint("BOTTOMRIGHT", -28, 9)
+    f.statusShare = 0.6
   end
   -- the Kit window's names: header (the strip to drag), close, gear (the cog of DonCore's options window)
   f.header = type(f.TitleContainer) == "table" and f.TitleContainer or f
@@ -1022,10 +1258,31 @@ function K.Window(name, opts)
     local O = LibStub("DonCore-1.0"):Get("Options", 1)
     if O and O.Open then
       f.gear = K.Button(f, O.Label and O.Label("Options") or "Options", { onClick = function() O.Open(opts.options) end })
+      f.gear.donOptionsId = opts.options -- (minor 5) the Kit cog's field
       f.gear:SetHeight(20)
       f.gear:SetPoint("TOPRIGHT", f, "TOPRIGHT", -30, attic and -1 or -30)
       if opts.hint then f.gear:SetTooltip(O.Label and O.Label("Options") or "Options", { opts.hint }) end
     end
+  end
+  -- (minor 5, Dropdon) opts.buttons = { { kind (Style.ICONS), key, tooltip, hint, onClick(win) }, ... }: more symbols
+  -- left of the cog, f.extra as in the Kit
+  f.extra = {}
+  local anchor = f.gear
+  for _, bo in ipairs(opts.buttons or {}) do
+    local b = Kit.IconButton(f, bo.kind, { size = 20, tooltip = bo.tooltip, hint = bo.hint,
+      onClick = function() if bo.onClick then Try(bo.onClick, f) end end })
+    b:ClearAllPoints()
+    if anchor then b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
+    else b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -30, attic and -1 or -30) end
+    b.key = bo.key
+    f.extra[#f.extra + 1] = b
+    anchor = b
+  end
+  -- (minor 5, Dropdon's size option) the window's own factor; the game's frame stands at 100 % beside the game's
+  -- windows, so the factor is the scale itself
+  function f:SetOwnScale(v)
+    self._ownScale = tonumber(v) or 1
+    self:SetScale(self._ownScale)
   end
   function f:SetSubtitle(text)
     if self.SetTitle then self:SetTitle((opts.title or "") .. ((text and text ~= "") and ("  \194\183  " .. text) or "")) end
@@ -1084,15 +1341,15 @@ end
 -- and fields are the Kit's (DonCore/Kit.lua), the drawing is the game's: its fonts (GameFontNormal gold,
 -- GameFontHighlight white), the tooltip border around a box, the quest log's highlight on a row, the plus and minus
 -- buttons at a group, the status bar texture in a bar, GameTooltip for every tooltip.
--- Not built (a row with them still shows, without that part): pill, dots, ring, chain and radio of a list row; the
--- list kinds sub, zone, cards, trow and done fall back to the plain row. A window that needs those keeps the Kit's list.
+-- (minor 5) the parts and kinds missing here at first (pill, dots, ring, chain, radio; sub, zone, cards, trow, done)
+-- are built now, see the end of the file.
 ---------------------------------------------------------------------------
 local S = Kit and Kit.SIZE or {}
 local HILITE = "Interface\\QuestFrame\\UI-QuestTitleHighlight"
 local BARTEX = "Interface\\TargetingFrame\\UI-StatusBar"
 
 -- a colour as the Kit takes it: a key of Kit.C or Kit.STATUS, or { r, g, b }
-local function Col3(c, d)
+function Col3(c, d)
   if type(c) == "string" and Kit then
     local k = (Kit.C and Kit.C[c]) or (Kit.STATUS and Kit.STATUS[c] and Kit.STATUS[c].fg)
     if type(k) == "table" then c = k end
@@ -1124,6 +1381,20 @@ function K.Fit(fs, width)
   if not (fs and fs.SetWidth) then return end
   fs:SetWidth(math.max(4, tonumber(width) or 4))
 end
+-- (minor 5) the game's fonts on the texts of a block the Kit built: map = { field = "GameFontNormal", ... }; the Kit's
+-- fitting starts again from the new font
+local function BlizzFonts(o, map)
+  if type(o) ~= "table" then return o end
+  for k, font in pairs(map) do
+    local fs = o[k]
+    if type(fs) == "table" and fs.SetFontObject then
+      pcall(fs.SetFontObject, fs, font)
+      fs._fitBase, fs._fitSize = nil, nil
+    end
+  end
+  return o
+end
+Bz.BlizzFonts = BlizzFonts
 
 -- a box with the game's tooltip border on a dark ground; without the backdrop template a plain dark ground
 local BOX = { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1312,9 +1583,7 @@ end
 -- frames, so a row holds a part per kind and shows the one its item needs).
 -- l:SetItems(items, reset), l:SetEmpty(text), l:Resize(w, h), l:Rows(), l:Select(item), l.items, l.columns (TableHead)
 ---------------------------------------------------------------------------
-local LIST_BAR = 20
-local KIND_H = { row = 36, group = 28, divider = 20, note = 28, table = 28, itemcards = 72 }
-local PART = {}
+-- (LIST_BAR, KIND_H, PART and MAKER are declared before the Table, which draws groups with the List's parts)
 
 -- kind "row": mark, lead, icon or level, title and sub line, one or two texts on the right
 PART.row = {
@@ -1342,22 +1611,46 @@ PART.row = {
       p.lead:Show()
       x = x + (S.lead or 42) + 8
     else p.lead:Hide() end
+    -- (minor 5) item.radio (true / false): the game's choice point on the left, as in the Kit
+    if it.radio ~= nil then
+      if not p.radio then p.radio = K.Radio(p) if p.radio.EnableMouse then p.radio:EnableMouse(false) end end
+      p.radio:SetChecked(it.radio)
+      p.radio:ClearAllPoints()
+      p.radio:SetPoint("LEFT", x, 0)
+      p.radio:Show()
+      x = x + 16 + 8
+    elseif p.radio then p.radio:Hide() end
     p.icon:ClearAllPoints() p.level:ClearAllPoints()
+    local lvColor = it.levelStatus or (tonumber(it.level) and Kit.QuestDifficulty and Kit.QuestDifficulty(it.level)) or it.status
+    local levelRight = false
     if (it.icon or it.iconKind) and SetIcon(p.icon, it) then
       local s = it.iconPlain and 16 or 24
       p.icon:SetSize(s, s)
       p.icon:SetPoint("LEFT", x, 0)
       p.icon:Show() p.level:Hide()
       x = x + s + 8
-    elseif it.level ~= nil then
+      levelRight = it.badgeRight and it.level ~= nil -- (minor 5) the level in the right column, the symbol on the left
+    elseif it.level ~= nil and it.radio == nil then
       p.icon:Hide()
       p.level:SetText("[" .. tostring(it.level) .. "]")
-      p.level:SetTextColor(Col3(it.levelStatus, GREY))
+      p.level:SetTextColor(Col3(lvColor, GREY))
       p.level:SetPoint("LEFT", x, 0)
       p.level:SetWidth(30)
       p.level:Show()
       x = x + 30 + 6
     else p.icon:Hide() p.level:Hide() end
+    -- (minor 5) a chain mark ("4a", or item.mark) after the level, green with a tick when the part is done
+    local m = it.chain ~= nil and it.chain or it.mark
+    local ch = (type(m) == "string" or type(m) == "number") and tostring(m) or nil
+    if ch then
+      if not p.chain then p.chain = K.ChainMark(p, "") end
+      p.chain:SetText(ch)
+      p.chain:SetDone(it.chainDone)
+      p.chain:ClearAllPoints()
+      p.chain:SetPoint("LEFT", x, 0)
+      p.chain:Show()
+      x = x + (tonumber(p.chain.width or (p.chain.GetWidth and p.chain:GetWidth())) or 26) + 6
+    elseif p.chain then p.chain:Hide() end
     local colW = tonumber(it.rightWidth) or ((it.right or it.right2) and 96 or 0)
     p.right:ClearAllPoints() p.right2:ClearAllPoints()
     p.right:SetText(it.right or "")
@@ -1369,6 +1662,40 @@ PART.row = {
       p.right2:SetPoint("TOPRIGHT", -12, -math.max(3, math.floor((h - 36) / 2) + 5) - 15)
     else p.right:SetPoint("RIGHT", -12, 0) end
     p.right:SetWidth(math.max(4, colW)) p.right2:SetWidth(math.max(4, colW))
+    -- (minor 5) a ring "3/6", a pill or the dots of a chain left of the right column; the level there with badgeRight
+    local rx = 12 + colW + (colW > 0 and 6 or 0)
+    local part
+    if type(it.ring) == "table" then
+      if not p.ring then p.ring = Kit.Ring(p, 28) BlizzFonts(p.ring, { text = "GameFontHighlightSmall" }) end
+      p.ring:SetValue(it.ring[1], it.ring[2])
+      part = p.ring
+    elseif p.ring then p.ring:Hide() end
+    if not part and type(it.pill) == "table" then
+      if not p.pill then p.pill = K.Pill(p) end
+      p.pill:SetPill(it.pill[1], it.pill[2])
+      part = p.pill
+    elseif p.pill then p.pill:Hide() end
+    if not part and it.dots then
+      if not p.dots then p.dots = Kit.Dots(p) end
+      p.dots:SetDots(it.dots)
+      part = p.dots
+    elseif p.dots then p.dots:Hide() end
+    if part then
+      part:ClearAllPoints()
+      part:SetPoint("RIGHT", -rx, 0)
+      part:Show()
+      rx = rx + (tonumber(part.width or (part.GetWidth and part:GetWidth())) or 28) + 6
+    end
+    if levelRight then
+      p.level:SetText("[" .. tostring(it.level) .. "]")
+      p.level:SetTextColor(Col3(lvColor, GREY))
+      p.level:SetJustifyH("RIGHT")
+      p.level:SetPoint("RIGHT", -rx, 0)
+      p.level:SetWidth(30)
+      p.level:Show()
+      rx = rx + 36
+    else p.level:SetJustifyH("LEFT") end
+    colW = math.max(colW, rx - 12 - 6)
     p.title:SetText(it.title or "")
     if it.titleColor then p.title:SetTextColor(Col3(it.titleColor))
     elseif it.quality then p.title:SetTextColor(Bz.QualityRGB(it.quality))
@@ -1611,6 +1938,47 @@ PART.itemcards = {
 }
 
 local CLICKS = { row = true, group = true, note = true, table = true }
+
+-- (minor 5) a row the Kit's way: made by opts.kinds[kind].make(list) (an addon's own kind) or by MAKER (the Kit's
+-- kinds sub, zone, cards, trow, done in the game's look), kept in the game's row frame as its part for that kind.
+-- The made row has SetItem(item, index, list) and Layout(w) and takes its own clicks as in the Kit's list.
+local function MadeClick(l)
+  return function(self, button)
+    if self._disabled then return end
+    if self._onClick then Try(self._onClick, self, button) return end
+    local it = self.item
+    if not it then return end
+    if it.itemID and LinkItem(it.itemID) then return end
+    if it.kind == "group" and not it.static and not it.onClick then
+      it.collapsed = not it.collapsed
+      if l.opts.onToggle then Try(l.opts.onToggle, it, l) end
+    elseif l.opts.onClick then Try(l.opts.onClick, it, button, l)
+    elseif type(it.onClick) == "function" then Try(it.onClick, self, button) end
+  end
+end
+local function FillMade(l, r, it, key, make, w, h)
+  local m = r.parts[key]
+  if not m then
+    m = make(l)
+    if m.SetParent then m:SetParent(r) end
+    m:ClearAllPoints()
+    m:SetPoint("TOPLEFT", r, "TOPLEFT", 0, 0)
+    m.list = l
+    if m.RegisterForClicks then
+      m:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+      m:SetScript("OnClick", MadeClick(l))
+    end
+    r.parts[key] = m
+    l.made = (l.made or 0) + 1
+  end
+  m:SetSize(w, h)
+  m._w, m.plain = w, nil
+  m._selected = (l.selected ~= nil and l.selected == it) or nil
+  m.onClick = it.onClick
+  m:Show()
+  Try(m.SetItem, m, it, l.index and l.index[it] or nil, l)
+  return m
+end
 local function FillListRow(l, r, it)
   if not r.built then
     r.built, r.parts = true, {}
@@ -1654,9 +2022,20 @@ local function FillListRow(l, r, it)
       HideTip()
     end)
   end
-  local kind = PART[it.kind] and it.kind or "row"
+  local own = l.opts.kinds and l.opts.kinds[it.kind]
+  local make = (own and own.make) or (not PART[it.kind] and MAKER[it.kind]) or nil
+  local kind = make and ("made:" .. tostring(it.kind)) or (PART[it.kind] and it.kind) or "row"
   local w, h = math.max(10, (l.w or 400) - LIST_BAR), l:ItemHeight(it)
   r.item, r.kind, r.list, r.onClick, r._w = it, kind, l, it.onClick, w
+  if make then
+    for k, p in pairs(r.parts) do if k ~= kind then p:Hide() end end
+    r.sel:Hide() r.hl:SetAlpha(0) r.rule:Hide() r.mark:Hide()
+    r.cards = nil
+    r.made = FillMade(l, r, it, kind, make, w, h)
+    l.drawnRows[#l.drawnRows + 1] = r
+    return
+  end
+  r.made = nil
   for k, p in pairs(r.parts) do if k ~= kind then p:Hide() end end
   local p = r.parts[kind]
   if not p then
@@ -1709,6 +2088,9 @@ function K.List(parent, opts)
   l.empty:Hide()
   function l:Draw(reset)
     self.drawnRows = {}
+    -- (minor 5) the index of every item, for rows that ask (SetItem(item, index, list))
+    self.index = {}
+    for i, it in ipairs(self.items) do self.index[it] = i end
     local keep = (not reset) and type(ScrollBoxConstants) == "table" and ScrollBoxConstants.RetainScrollPosition or nil
     self.box:SetDataProvider(CreateDataProvider(self.items), keep)
     Bz.ClampScroll(self.box)
@@ -1728,16 +2110,22 @@ function K.List(parent, opts)
     if changed then self:Draw() end -- the rows are laid out for the width
   end
   -- the rows on screen: the game's own list of them where it has one
+  -- (minor 5) a row the Kit's way (own kinds, sub, zone ...) stands for its frame, as in the Kit's list
   function l:Rows()
+    local frames = self.drawnRows
     if type(self.box.GetFrames) == "function" then
-      local ok, frames = pcall(self.box.GetFrames, self.box)
-      if ok and type(frames) == "table" then return frames end
+      local ok, f = pcall(self.box.GetFrames, self.box)
+      if ok and type(f) == "table" then frames = f end
     end
-    return self.drawnRows
+    local out = {}
+    for i, f in ipairs(frames) do out[i] = (f.made and f.made.item == f.item) and f.made or f end
+    return out
   end
   function l:Select(item) self.selected = item self:Draw() end
   function l:SetPlain() end
-  function l:SetRail() end
+  function l:SetRail(on) self.rail = on and true or nil self:Draw() end
+  -- (minor 5) as the Kit: the item (or its index) into view, top = true at the top
+  function l:ScrollTo(it, top) return Bz.ScrollTo(self.box, self.items, it, top) end
   return l
 end
 
@@ -1749,29 +2137,49 @@ function K.TableHead(parent, opts)
   local head = CreateFrame("Frame", nil, parent)
   head:SetHeight(S.chip or 24)
   head.columns, head.icon, head.sortKey, head.desc, head.btns = opts.columns or {}, opts.icon and true or false, opts.sortKey, opts.desc, {}
+  head.blizz = true
   local tpl = Has("ColumnDisplayButtonNoScriptsTemplate") and "ColumnDisplayButtonNoScriptsTemplate" or nil
+  -- (minor 5, Guildon) one head button per column made at once, head.cells as in the Kit (b.col, b.text, b.arrow);
+  -- a head the caller hides stays hidden at the next layout
+  local function Btn(i)
+    local b = head.btns[i]
+    if b then return b end
+    b = CreateFrame("Button", nil, head, tpl)
+    b:SetHeight(S.chip or 24)
+    b.text = FS(b, "sub", WHITE)
+    b.arrow = FS(b, "sub", GOLD) -- the Kit's field; the sort mark stands in the text ("^" / "v")
+    b.arrow:Hide()
+    b:SetScript("OnClick", function(btn)
+      local d = btn.def
+      if not (d and d.sort) then return end
+      local desc = head.sortKey == d.key and not head.desc or (head.sortKey ~= d.key and d.desc) or false
+      head:SetSort(d.key, desc)
+      if opts.onSort then Try(opts.onSort, d.key, desc, head) end
+    end)
+    b:SetScript("OnEnter", function(btn)
+      local d = btn.def
+      if d and type(d.tooltip) == "table" then Tip(btn, d.tooltip[1] or d.text, d.tooltip[2]) end
+    end)
+    b:SetScript("OnLeave", HideTip)
+    head.btns[i] = b
+    return b
+  end
+  for i, col in ipairs(head.columns) do local b = Btn(i) b.def, b.col = col, col end
+  head.cells = head.btns
   function head:Cols(w) return Kit.TableCols(self.columns, w, self.icon) end
-  function head:Bind(list) self.list = list list.columns, list.tableIcon = self.columns, self.icon end
-  function head:SetSort(key, desc) self.sortKey, self.desc = key, desc if self._w then self:Layout(self._w) end end
+  function head:Bind(list) self.list = list list._tableHead = self list.columns, list.tableIcon = self.columns, self.icon end
+  function head:SetSort(key, desc) self.sortKey, self.desc = key, desc and true or false if self._w then self:Layout(self._w) end end
   function head:Layout(w)
     self._w = w
     self:SetWidth(w)
-    if self.list then self.list.columns, self.list.tableIcon = self.columns, self.icon end
+    if self.list and (self.list._tableHead == nil or self.list._tableHead == self) then
+      self.list.columns, self.list.tableIcon = self.columns, self.icon
+    end
     local cols = self:Cols(math.max(10, w - LIST_BAR))
     for i, c in ipairs(cols) do
       local def = self.columns[i]
-      local b = self.btns[i]
-      if not b then
-        b = CreateFrame("Button", nil, self, tpl)
-        b:SetHeight(S.chip or 24)
-        b.text = FS(b, "sub", WHITE)
-        b:SetScript("OnClick", function(btn)
-          local d = btn.def
-          if d and d.sort and opts.onSort then Try(opts.onSort, d.key, self.sortKey == d.key and not self.desc, self) end
-        end)
-        self.btns[i] = b
-      end
-      b.def = def
+      local b = Btn(i)
+      b.def, b.col = def, def
       local x, cw = c.x or c[1] or 0, c.w or c[2] or 60
       -- the first head starts at the list's left edge (over the symbol), each one reaches to the next
       local left = i == 1 and 0 or (x - 4)
@@ -1790,9 +2198,12 @@ function K.TableHead(parent, opts)
         b.text:SetPoint("LEFT", math.max(8, x - left), 0)
       end
       b.text:SetWidth(math.max(4, cw))
-      b:Show()
+      if b._layoutHidden then b._layoutHidden = nil b:Show() end
     end
-    for i = #cols + 1, #self.btns do self.btns[i]:Hide() end
+    for i = #cols + 1, #self.btns do
+      local b = self.btns[i]
+      if b:IsShown() then b:Hide() b._layoutHidden = true end
+    end
   end
   return head
 end
@@ -1887,6 +2298,10 @@ function K.Detail(parent, opts)
   d.icon = d.head:CreateTexture(nil, "ARTWORK")
   d.icon:SetSize(28, 28)
   d.icon:SetPoint("LEFT", 8, 0)
+  -- (minor 5) the level as the quest log writes it ("[12]" in the quest's colour) when the head has no symbol
+  d.badge = FS(d.head, "tab", WHITE)
+  d.badge:SetPoint("LEFT", 10, 0)
+  d.badge:Hide()
   d.title = FS(d.head, "tab", GOLD)
   d.meta = FS(d, "sub", GREY)
   d.pill = FS(d, "sub", WHITE)
@@ -1908,6 +2323,16 @@ function K.Detail(parent, opts)
   function d.area:SetContentHeight(h) self.contentH = h self.content:SetHeight(math.max(1, h)) end
   d.lines, d.nLines, d.blocks, d.y, d.actions = {}, 0, {}, 8, {}
   local function Width() return math.max(40, (d._w or 320) - 24 - 6) end
+  -- a line's text and right column: the right takes what it needs up to 45 %, the text the rest
+  local function FitLine(ln)
+    local W = Width() - (ln.inset or 0)
+    local r = ln.right:GetText() or ""
+    local tw = ln.right.GetStringWidth and tonumber((ln.right:GetStringWidth())) or 0
+    local rw = r ~= "" and math.min(tw + 4, math.floor(W * 0.45)) or 0
+    if r ~= "" and rw < 24 then rw = math.min(math.floor(W * 0.45), 60) end
+    ln.right:SetWidth(math.max(4, rw))
+    ln.text:SetWidth(math.max(20, W - rw - (rw > 0 and 8 or 0)))
+  end
   local function NewLine()
     d.nLines = d.nLines + 1
     local ln = d.lines[d.nLines]
@@ -1923,7 +2348,11 @@ function K.Detail(parent, opts)
       ln:SetScript("OnLeave", HideTip)
       d.lines[d.nLines] = ln
     end
-    ln.lo = nil
+    ln.lo, ln.para, ln.inset = nil, nil, 0
+    if ln.ic then ln.ic:Hide() end
+    if ln.bar then ln.bar:Hide() end
+    ln.text:ClearAllPoints()
+    ln.text:SetPoint("LEFT", 0, 0)
     if ln.text.SetWordWrap then ln.text:SetWordWrap(false) end
     ln:ClearAllPoints()
     ln:SetPoint("TOPLEFT", 12, -d.y)
@@ -1934,7 +2363,16 @@ function K.Detail(parent, opts)
   function d:SetHead(hd)
     hd = hd or {}
     self.headData = hd
-    if (hd.icon or hd.itemID) and SetIcon(self.icon, hd) then self.icon:Show() else self.icon:Hide() end
+    if (hd.icon or hd.itemID) and SetIcon(self.icon, hd) then self.icon:Show() self.badge:Hide()
+    else
+      self.icon:Hide()
+      if hd.level ~= nil then
+        local st = hd.levelStatus or (tonumber(hd.level) and Kit.QuestDifficulty and Kit.QuestDifficulty(hd.level)) or "grey"
+        self.badge:SetText("[" .. tostring(hd.level) .. "]")
+        self.badge:SetTextColor(Col3(st, GREY))
+        self.badge:Show()
+      else self.badge:Hide() end
+    end
     self.title:SetText(hd.title or "")
     self.title:SetTextColor(Col3(hd.titleColor, GOLD))
     self.meta:SetText(hd.meta or "")
@@ -1943,9 +2381,26 @@ function K.Detail(parent, opts)
     self.pill:SetTextColor(Col3(pill and (pill[2] or pill.kind), WHITE))
     if self._w then self:Layout(self._w, self._h) end
   end
-  function d:SetActions(list) self.actionList = list or {} end
+  -- (minor 5) the Kit's action buttons, the game's buttons: under the meta line, or at the bottom (opts.actionsBottom,
+  -- the first takes the room); { text, onClick, kind, tooltip = { title, lines }, disabled, selected }
+  function d:SetActions(list)
+    self.actionList = list or {}
+    for _, b in ipairs(self.actions) do b:Hide() end
+    for i, a in ipairs(self.actionList) do
+      local b = self.actions[i]
+      if not b then b = K.Button(self, "", {}) self.actions[i] = b end
+      b:SetText(a.text or "")
+      b._onClick = a.onClick
+      if a.tooltip then b:SetTooltip(a.tooltip[1], a.tooltip[2]) else b._tip = nil end
+      b:SetDisabled(a.disabled)
+      b:SetSelected(a.selected and true or false)
+      b:Show()
+    end
+    self.nActions = #self.actionList
+    if self._w then self:Layout(self._w, self._h) end
+  end
   function d:Begin()
-    for _, ln in ipairs(self.lines) do ln:Hide() end
+    for _, ln in ipairs(self.lines) do ln:Hide() if ln.ic then ln.ic:Hide() end if ln.bar then ln.bar:Hide() end end
     for _, b in ipairs(self.blocks) do b:Hide() end
     self.nLines, self.blocks, self.y = 0, {}, 8
   end
@@ -1970,10 +2425,56 @@ function K.Detail(parent, opts)
     local r = (right ~= nil and tostring(right) ~= "") and tostring(right) or ""
     ln.right:SetText(r)
     ln.right:SetTextColor(Col3(rightColor, WHITE))
-    ln.right:SetWidth(r ~= "" and math.floor(Width() * 0.6) or 4)
-    ln.text:SetWidth(r ~= "" and math.floor(Width() * 0.4) or Width())
+    FitLine(ln)
     self.y = self.y + 18
     return ln.text
+  end
+  -- (minor 5) the Kit's Progress: a line with "have / need" and a thin bar under it (green when done)
+  function d:Progress(text, have, need, done)
+    have, need = tonumber(have), tonumber(need)
+    local fs = self:Line(text, done and "green" or nil, (have and need) and (have .. " / " .. need) or nil, done and "green" or GREY)
+    local ln = self.lines[self.nLines]
+    if have and need and need > 0 then
+      if not ln.bar then ln.bar = K.ProgressBar(self.area.content) ln.bar:SetHeight(3) end
+      ln.bar:ClearAllPoints()
+      ln.bar:SetPoint("TOPLEFT", self.area.content, "TOPLEFT", 12, -self.y + 1)
+      ln.bar:Layout(Width())
+      ln.bar:SetColor(done and "green" or "yellow")
+      ln.bar:SetValue(have / need)
+      ln.bar:Show()
+      self.y = self.y + 5
+    end
+    return fs
+  end
+  -- (minor 5) the Kit's Item: a line with the item's symbol (16 px, the game's tooltip, Shift-click links it); returns
+  -- the text and the symbol (K.ItemIcon: SetItem, _onClick, extraTip, bd) as the Kit
+  function d:Item(item, text, color, right, rightColor, onClick)
+    local ln = NewLine()
+    if not ln.ic then ln.ic = K.ItemIcon(ln, 16) ln.ic:SetPoint("LEFT", 0, 0) end
+    ln.ic:SetItem(item)
+    ln.ic._onClick = onClick
+    ln.ic:Show()
+    ln.inset = 22
+    ln.text:ClearAllPoints()
+    ln.text:SetPoint("LEFT", 22, 0)
+    ln.text:SetFontObject(Bz.FONTS.row)
+    ln.text:SetText(text or "")
+    ln.text:SetTextColor(Col3(color, { 0.85, 0.85, 0.85 }))
+    local r = (right ~= nil and tostring(right) ~= "") and tostring(right) or ""
+    ln.right:SetText(r)
+    ln.right:SetTextColor(Col3(rightColor, GREY))
+    FitLine(ln)
+    ln:SetHeight(20)
+    self.y = self.y + 20
+    return ln.text, ln.ic
+  end
+  -- (minor 5) the lines to the width again (after a new size), as the Kit's FitLines
+  function d:FitLines()
+    for i = 1, self.nLines do
+      local ln = self.lines[i]
+      ln:SetWidth(Width())
+      if ln.para then ln.text:SetWidth(Width()) else FitLine(ln) end
+    end
   end
   function d:Para(text, color)
     local ln = NewLine()
@@ -1982,6 +2483,7 @@ function K.Detail(parent, opts)
     ln.text:SetText(text or "")
     ln.text:SetTextColor(Col3(color, { 0.85, 0.85, 0.85 }))
     ln.text:SetWidth(Width())
+    ln.para = true
     ln.right:SetText("")
     local h = math.max(14, ln.text.GetStringHeight and tonumber((ln.text:GetStringHeight())) or 14)
     ln:SetHeight(h)
@@ -1999,15 +2501,16 @@ function K.Detail(parent, opts)
     self.y = self.y + (h or frame:GetHeight() or 0) + 4
   end
   function d:Space(px) self.y = self.y + (px or 8) end
-  function d:End() self.area:SetContentHeight(self.y + 8) end
+  function d:End() self.area:SetContentHeight(self.y + 8) self:FitLines() end
   function d:Layout(w, h)
     self._w, self._h = w, h
     self:SetSize(w, h or 100)
     local hd = self.headData or {}
-    local x = self.icon:IsShown() and 44 or 10
+    local x = self.icon:IsShown() and 44 or self.badge:IsShown() and 46 or 10
     self.title:ClearAllPoints()
     self.title:SetPoint("LEFT", x, 0)
     self.title:SetWidth(math.max(20, w - x - 8 - 30))
+    if self.badge:IsShown() then self.badge:SetWidth(34) end
     local y = 44 + 8
     local pill = (self.pill:GetText() or "") ~= ""
     if (hd.meta or "") ~= "" or pill then
@@ -2019,10 +2522,39 @@ function K.Detail(parent, opts)
       self.meta:Show() self.pill:Show()
       y = y + 20
     else self.meta:Hide() self.pill:Hide() end
+    -- (minor 5) the action buttons: in a row under the meta line, or at the bottom with opts.actionsBottom
+    local n, bottom = self.nActions or 0, 0
+    if n > 0 and opts.actionsBottom then
+      bottom = 22 + 2 * 8
+      local rest = 0
+      for i = 2, n do rest = rest + math.min(self.actions[i].natural or 60, 120) + 4 end
+      local bx = 12
+      for i = 1, n do
+        local b = self.actions[i]
+        local bw = i == 1 and math.max(40, w - 24 - rest) or math.min(b.natural or 60, 120)
+        b:ClearAllPoints()
+        b:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", bx, 10)
+        b:Layout(bw)
+        bx = bx + bw + 4
+      end
+    elseif n > 0 then
+      local each = math.floor((w - 24 - (n - 1) * 4) / n)
+      local bx = 12
+      for i = 1, n do
+        local b = self.actions[i]
+        local bw = math.min(b.natural or each, each)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", self, "TOPLEFT", bx, -y)
+        b:Layout(bw)
+        bx = bx + bw + 4
+      end
+      y = y + 22 + 8
+    end
     self.area:ClearAllPoints()
     self.area:SetPoint("TOPLEFT", 4, -y)
-    self.area:SetSize(math.max(10, w - 8), math.max(10, (h or 100) - y - 6))
+    self.area:SetSize(math.max(10, w - 8), math.max(10, (h or 100) - y - 6 - bottom))
     self.area.content:SetWidth(math.max(10, w - 8))
+    self:FitLines()
   end
   d:Begin()
   return d
@@ -2319,4 +2851,840 @@ function Bz.PanelLook(panel, on)
   if type(panel.SetGameLook) == "function" then panel:SetGameLook(on) end
   panel.blizzLook = on or nil
   return true
+end
+
+---------------------------------------------------------------------------
+-- (minor 5, 16.11.2026, Daniel: the Blizzard look as the default for all Don addons) the Kit's other blocks in the game's
+-- look, with the Kit's calls, methods and fields. Rows the Kit builds keep their logic (SetItem, Layout, the cut texts,
+-- the tooltip) and are dressed here: the game's fonts, the quest log's highlight for hover and selection, the fine light
+-- line under a row, the mark on the left; boxes on the game's tooltip edge; bars from the game's status bar texture.
+-- Kept in the Kit's look on purpose: LineChart (no counterpart in the game, as in Profitdon), RoundIcon (already the
+-- minimap button art of the game), IconButton (Style's symbols, the game's own atlases), Ring and Dots (status colours),
+-- the helpers without a look of their own (Stateful, IconText, Money, Fill, Tex ...).
+---------------------------------------------------------------------------
+local EDGE = { 0.6, 0.55, 0.45 }
+local EDGE_HOT = { 0.85, 0.75, 0.5 }
+local RED = { 1, 0.1, 0.1 }
+local PLUS, MINUS = "Interface\\Buttons\\UI-PlusButton-Up", "Interface\\Buttons\\UI-MinusButton-Up"
+local function Status(st) local c = Kit.STATUS and st and Kit.STATUS[st] return c and c.fg or nil end
+
+-- a Kit fill turned into the quest log's highlight (hidden until hover or selection)
+local function Hilite(tex)
+  if not tex then return end
+  tex:SetTexture(HILITE)
+  if tex.SetBlendMode then tex:SetBlendMode("ADD") end
+  tex:SetVertexColor(1, 1, 1, 1)
+  tex:Hide()
+end
+-- a row from the Kit's RowBase (bg, mark, lineB, lineT) in the game's look
+local function RowSkin(r)
+  Hilite(r.bg)
+  if r.lineB then r.lineB:SetVertexColor(1, 1, 1, 0.07) end
+  if r.lineT then r.lineT:Hide() end
+  r.blizz = true
+  return r
+end
+-- hover at half strength, selection (or item.active) at full; true when selected
+local function RowLight(r, st, hover)
+  local sel = st == "selected" or r._active
+  if sel then r.bg:SetAlpha(1) r.bg:Show()
+  elseif st == "hover" and hover ~= false then r.bg:SetAlpha(0.5) r.bg:Show()
+  else r.bg:Hide() end
+  return sel and true or false
+end
+local function Mark(r, c)
+  if not r.mark then return end
+  if c then local cr, cg, cb = Col3(c) r.mark:SetVertexColor(cr, cg, cb, 1) r.mark:Show() else r.mark:Hide() end
+end
+-- the block paints itself with paint(self, state) from now on (Kit.Stateful's states)
+local function Repaint(w, paint)
+  w._paint = paint
+  if Kit.Refresh then Kit.Refresh(w) end
+  return w
+end
+local function TitleColor(fs, it, sel)
+  if it and it.titleColor then fs:SetTextColor(Col3(it.titleColor))
+  elseif it and it.quality then fs:SetTextColor(Bz.QualityRGB(it.quality))
+  elseif sel then fs:SetTextColor(1, 1, 1)
+  else fs:SetTextColor(1, 0.82, 0) end
+end
+-- the textures of a frame (the Kit's fills without a name), for a new tone
+local function Regions(f, fn)
+  if not (f and f.GetRegions) then return end
+  local list = { f:GetRegions() }
+  for _, t in ipairs(list) do if type(t) == "table" and t.GetObjectType and t:GetObjectType() == "Texture" then fn(t) end end
+end
+-- the game's tooltip edge on a frame the Kit built (Mixin of the backdrop template); false where the client cannot
+local function Backdrop(f)
+  local M = rawget(_G, "BackdropTemplateMixin")
+  if not f.SetBackdrop and type(M) == "table" and type(rawget(_G, "Mixin")) == "function" then
+    Mixin(f, M)
+    if f.GetScript and f.SetScript and not f:GetScript("OnSizeChanged") and f.OnBackdropSizeChanged then
+      f:SetScript("OnSizeChanged", f.OnBackdropSizeChanged)
+    end
+  end
+  if not (f.SetBackdrop and f.SetBackdropColor and f.SetBackdropBorderColor) then return false end
+  if not pcall(f.SetBackdrop, f, BOX) then return false end
+  f:SetBackdropColor(0.09, 0.08, 0.07, 0.85)
+  f:SetBackdropBorderColor(EDGE[1], EDGE[2], EDGE[3], 1)
+  f.boxed = true
+  return true
+end
+local function Edge(f, c)
+  local r, g, b = Col3(c, EDGE)
+  if f.boxed then f:SetBackdropBorderColor(r, g, b, 1) elseif f.bd and f.bd.SetColor then f.bd:SetColor({ r, g, b }) end
+end
+-- a Kit box (bg, bd) on the tooltip edge, or at least in its tones
+local function BoxSkin(f)
+  if Backdrop(f) then
+    if f.bg then f.bg:Hide() end
+    if f.bd and f.bd.SetColor then f.bd:SetColor(EDGE, 0) end
+  else
+    if f.bg then f.bg:SetVertexColor(0.09, 0.08, 0.07, 0.85) end
+    if f.bd and f.bd.SetColor then f.bd:SetColor(EDGE) end
+  end
+  return f
+end
+Bz.BoxSkin = BoxSkin
+
+---------------------------------------------------------------------------
+-- small marks: ChainMark (a dark box on the tooltip edge, gold), Pill (status colour on a dark ground), Radio (the
+-- game's radio button as it comes)
+---------------------------------------------------------------------------
+local function SkinChain(ch)
+  if type(ch) ~= "table" or ch.blizz then return ch end
+  ch.blizz = true
+  BlizzFonts(ch, { text = "GameFontNormalSmall" })
+  local function plain(self) self.bg:SetVertexColor(0, 0, 0, 0.45) self.bd:SetColor(EDGE) end
+  plain(ch)
+  local done = ch.SetDone
+  function ch:SetDone(on) done(self, on) if not on then plain(self) end end
+  return ch
+end
+function K.ChainMark(parent, text) return SkinChain(Kit.ChainMark(parent, text)) end
+
+local function SkinPill(p)
+  if type(p) ~= "table" or p.blizz then return p end
+  p.blizz = true
+  BlizzFonts(p, { text = "GameFontHighlightSmall" })
+  local set = p.SetPill
+  function p:SetPill(t, k)
+    set(self, t, k)
+    self.bg:SetVertexColor(0, 0, 0, 0.55)
+  end
+  p:SetPill(p.text and p.text:GetText() or "", nil)
+  return p
+end
+function K.Pill(parent, text, kind)
+  local p = SkinPill(Kit.Pill(parent, text, kind))
+  p:SetPill(text, kind)
+  return p
+end
+
+local function SkinRadio(r)
+  if type(r) ~= "table" or r.blizz then return r end
+  r.blizz = true
+  return Repaint(r, function(self, st)
+    for _, t in ipairs({ self.ring, self.dot }) do
+      if t.SetDesaturated then t:SetDesaturated(false) end
+      t:SetVertexColor(1, 1, 1, 1)
+    end
+    if self.ring.SetTexCoord then
+      if st == "hover" then self.ring:SetTexCoord(0.5, 0.75, 0, 1) else self.ring:SetTexCoord(0, 0.25, 0, 1) end
+    end
+    if self.checked then self.dot:Show() else self.dot:Hide() end
+  end)
+end
+function K.Radio(parent, opts) return SkinRadio(Kit.Radio(parent, opts)) end
+
+---------------------------------------------------------------------------
+-- ItemIcon: the symbol on a dark slot, the game's icon frame in the quality colour from green up, the count in the
+-- game's number font, the square highlight of the action buttons. ItemGrid: those symbols in rows (the Kit's calls).
+---------------------------------------------------------------------------
+local function SkinItemIcon(b)
+  if type(b) ~= "table" or b.blizz then return b end
+  b.blizz = true
+  if b.bd then b.bd:SetColor(EDGE, 0) end
+  b.qframe = b:CreateTexture(nil, "OVERLAY")
+  b.qframe:SetTexture("Interface\\Common\\WhiteIconFrame")
+  b.qframe:SetAllPoints(b)
+  b.qframe:Hide()
+  BlizzFonts(b, { count = "NumberFontNormalSmall" })
+  if b.SetHighlightTexture then pcall(b.SetHighlightTexture, b, "Interface\\Buttons\\ButtonHilight-Square", "ADD") end
+  local set = b.SetItem
+  function b:SetItem(...)
+    set(self, ...)
+    if self.bd then self.bd:SetColor(EDGE, 0) end
+    local q = tonumber(self.quality)
+    if q and q >= 2 then self.qframe:SetVertexColor(Bz.QualityRGB(q)) self.qframe:Show() else self.qframe:Hide() end
+  end
+  return b
+end
+function K.ItemIcon(parent, size) return SkinItemIcon(Kit.ItemIcon(parent, size)) end
+
+function K.ItemGrid(parent, opts)
+  opts = opts or {}
+  local size, gap = opts.size or 28, opts.gap or 4
+  local g = CreateFrame("Frame", nil, parent)
+  g.icons, g.entries, g.blizz = {}, {}, true
+  function g:SetItems(list)
+    self.entries = type(list) == "table" and list or {}
+    for i, e in ipairs(self.entries) do
+      local b = self.icons[i]
+      if not b then
+        b = K.ItemIcon(self, size)
+        b._onClick = function(icon, button) if opts.onClick then Try(opts.onClick, icon, button, icon.entry) end end
+        self.icons[i] = b
+      end
+      local en = type(e) == "table" and e or { itemID = e }
+      b.entry = en
+      b:SetItem(en.itemID, en.count, en.quality)
+      b:SetUnusable(en.unusable)
+      b.reason = type(en.unusable) == "string" and en.unusable or nil
+      b.tipFallback = en.tipFallback
+      b:Show()
+    end
+    for i = #self.entries + 1, #self.icons do self.icons[i]:Hide() self.icons[i].entry = nil end
+    self:Layout(self._w or tonumber(self.GetWidth and self:GetWidth()) or 200)
+  end
+  function g:Layout(w)
+    w = tonumber(w) or 200
+    self._w = w
+    local cols = math.max(1, math.floor((w + gap) / (size + gap)))
+    local n = #self.entries
+    for i = 1, n do
+      local b = self.icons[i]
+      b:ClearAllPoints()
+      b:SetPoint("TOPLEFT", ((i - 1) % cols) * (size + gap), -math.floor((i - 1) / cols) * (size + gap))
+    end
+    local h = n > 0 and (math.ceil(n / cols) * (size + gap) - gap) or 0
+    self:SetSize(w, math.max(1, h))
+    return h
+  end
+  return g
+end
+
+---------------------------------------------------------------------------
+-- Rows of the List the Kit's way: ListRow, GroupHeader, SubRow, ZoneRow, OptionRow, ItemRow, NoteRow, DoneRow, the
+-- WarnRow on its own; the same fields (title, sub, right, right2, iconBox, badge, chain, pill, dots, ring, text, count,
+-- arrow ...) and methods (SetItem, Layout, SetSelected ...)
+---------------------------------------------------------------------------
+local function ListPaint(self, st)
+  local it = self.item
+  local sel = RowLight(self, st)
+  Mark(self, sel and GOLD or (it and it.markColor) or Status(it and it.status))
+  TitleColor(self.title, it, sel)
+end
+
+function K.ListRow(parent)
+  local r = RowSkin(Kit.ListRow(parent))
+  BlizzFonts(r, { title = "GameFontNormal", sub = "GameFontHighlightSmall", right = "GameFontHighlightSmall", right2 = "GameFontHighlightSmall" })
+  BlizzFonts(r.badge, { text = "GameFontHighlightSmall" })
+  BlizzFonts(r.ring, { text = "GameFontHighlightSmall" })
+  SkinChain(r.chain)
+  SkinPill(r.pill)
+  if r.iconBox and r.iconBox.bg then r.iconBox.bg:Hide() end
+  local base = r.SetItem
+  function r:SetItem(it, ...)
+    base(self, it, ...)
+    -- the symbol without the Kit's box; an edge only in the item's quality colour from green up
+    if self.iconBox then
+      if self.iconBox.bg then self.iconBox.bg:Hide() end
+      if not (it and tonumber(it.quality) and it.quality >= 2) and self.iconBox.bd then self.iconBox.bd:SetColor(EDGE, 0) end
+    end
+    if self.lead and not self.lead.blizz then
+      self.lead.blizz = true
+      BlizzFonts(self, { lead = "GameFontHighlightSmall" })
+      self.lead:SetTextColor(Col3(it and it.leadColor, GREY))
+    end
+    if self.radio then SkinRadio(self.radio) end
+  end
+  return Repaint(r, ListPaint)
+end
+
+-- the head of a group: a light gold band, the game's plus and minus, gold text, the count on the right. r.arrow keeps
+-- the Kit's calls (SetText "+", "-" or ""), it shows the game's buttons.
+function K.GroupHeader(parent)
+  local r = RowSkin(Kit.GroupHeader(parent))
+  BlizzFonts(r, { text = "GameFontNormal", count = "GameFontHighlightSmall" })
+  r.count:SetTextColor(Col3(GREY))
+  r.band = r:CreateTexture(nil, "BACKGROUND")
+  r.band:SetPoint("TOPLEFT", 0, -1) r.band:SetPoint("BOTTOMRIGHT", 0, 1)
+  r.band:SetColorTexture(1, 0.82, 0, 0.07)
+  r.pm = r:CreateTexture(nil, "ARTWORK")
+  r.pm:SetSize(14, 14)
+  r.pm:SetPoint("LEFT", 6, 0)
+  r.pm:Hide()
+  local setText = r.arrow.SetText
+  r.arrow.SetText = function(fs, t)
+    setText(fs, "")
+    fs.sign = t
+    if t == "+" or t == "-" then r.pm:SetTexture(t == "+" and PLUS or MINUS) r.pm:Show() else r.pm:Hide() end
+  end
+  r.arrow:SetText(r.arrow.sign or "")
+  local base = r.SetItem
+  function r:SetItem(it, ...)
+    base(self, it, ...)
+    if it and not it.color then self.text:SetTextColor(1, 0.82, 0) end
+  end
+  return Repaint(r, function(self, st) RowLight(self, st, not (self.item and self.item.static)) end)
+end
+
+-- a chain step under its quest: the chain mark, the title white while it is the current one
+function K.SubRow(parent)
+  local r = RowSkin(Kit.SubRow(parent))
+  BlizzFonts(r, { title = "GameFontHighlight", right = "GameFontHighlightSmall" })
+  SkinChain(r.chain)
+  return Repaint(r, function(self, st)
+    local s = self.item and self.item.status
+    local cur = s == "current"
+    if st == "selected" then self.bg:SetAlpha(1) self.bg:Show()
+    elseif st == "hover" then self.bg:SetAlpha(0.5) self.bg:Show()
+    elseif cur then self.bg:SetAlpha(0.3) self.bg:Show()
+    else self.bg:Hide() end
+    Mark(self, st == "selected" and GOLD or Status(s) or GREY)
+    if cur or st == "selected" then self.title:SetTextColor(1, 1, 1)
+    elseif s == "next" then self.title:SetTextColor(1, 0.82, 0)
+    else self.title:SetTextColor(Col3(GREY)) end
+  end)
+end
+
+-- a zone in a sidebar: gold name, range or count on the right, the progress on the game's bar texture
+function K.ZoneRow(parent)
+  local r = RowSkin(Kit.ZoneRow(parent))
+  BlizzFonts(r, { text = "GameFontNormal", count = "GameFontHighlightSmall", short = "GameFontNormalSmall", num = "GameFontDisableSmall" })
+  r.track:SetVertexColor(0, 0, 0, 0.5)
+  r.fill:SetTexture(BARTEX)
+  return Repaint(r, function(self, st)
+    local it = self.item
+    local sel = RowLight(self, st)
+    Mark(self, sel and GOLD or Status(it and it.status))
+    local c = sel and WHITE or (it and it.quiet) and GREY or GOLD
+    self.text:SetTextColor(Col3(c))
+    self.short:SetTextColor(Col3(c))
+  end)
+end
+
+-- an option: label, a quiet line below, the control on the right
+function K.OptionRow(parent, opts)
+  local r = RowSkin(Kit.OptionRow(parent, opts))
+  BlizzFonts(r, { label = "GameFontHighlight", desc = "GameFontDisableSmall" })
+  return Repaint(r, function(self, st) RowLight(self, st == "hover" and "hover" or "normal") end)
+end
+
+-- a row of a table in a List (kind "trow"): the item's symbol, gold or quality title, the cells under list.columns
+function K.ItemRow(parent)
+  local r = RowSkin(Kit.ItemRow(parent))
+  BlizzFonts(r, { title = "GameFontNormal", sub = "GameFontHighlightSmall" })
+  SkinItemIcon(r.iconBox)
+  local cell = r.Cell
+  function r:Cell(i)
+    local fs = cell(self, i)
+    if not fs.blizz then fs.blizz = true BlizzFonts({ fs = fs }, { fs = "GameFontHighlight" }) end
+    return fs
+  end
+  return Repaint(r, ListPaint)
+end
+
+-- one line of text; item.warn: red text with a "!" on the tooltip box with a red edge
+function K.NoteRow(parent)
+  local r = RowSkin(Kit.NoteRow(parent))
+  BlizzFonts(r, { text = "GameFontHighlightSmall", right = "GameFontNormalSmall", bang = "GameFontNormal" })
+  r.bang:SetTextColor(Col3(RED))
+  local boxed = Backdrop(r)
+  if r.bd and r.bd.SetColor then r.bd:SetColor(EDGE, 0) end
+  local base = r.SetItem
+  function r:SetItem(it, ...)
+    base(self, it, ...)
+    local warn = it and it.warn
+    if r.bd and r.bd.SetColor then r.bd:SetColor(EDGE, 0) end
+    if boxed then
+      if warn then self:SetBackdropColor(0.22, 0.03, 0.03, 0.75) self:SetBackdropBorderColor(RED[1], RED[2], RED[3], 1)
+      else self:SetBackdropColor(0, 0, 0, 0) self:SetBackdropBorderColor(0, 0, 0, 0) end
+    end
+    if warn and not it.color then self.text:SetTextColor(Col3(RED))
+    elseif not it.color then self.text:SetTextColor(Col3(GREY)) end
+  end
+  return Repaint(r, function(self, st)
+    local it = self.item
+    RowLight(self, st, it and (it.onClick or it.clickable) and true or false)
+    if self.lineB then if it and it.warn then self.lineB:Hide() else self.lineB:Show() end end
+  end)
+end
+
+-- the red warning line on its own (outside a list): w:SetText(text), w:Layout(width)
+function K.WarnRow(parent)
+  local r = K.NoteRow(parent)
+  r:SetItem({ warn = true, text = "" })
+  function r:SetText(t) self:SetItem({ warn = true, text = t, tooltipFn = self.item and self.item.tooltipFn }) end
+  return r
+end
+
+-- something finished: the tick, the text quiet
+function K.DoneRow(parent)
+  local r = RowSkin(Kit.DoneRow(parent))
+  BlizzFonts(r, { title = "GameFontDisableSmall" })
+  return Repaint(r, function(self, st) RowLight(self, st) end)
+end
+
+---------------------------------------------------------------------------
+-- Card: the Kit's index card on the game's tooltip box, the game's buttons; CardRow: cards side by side (kind "cards")
+---------------------------------------------------------------------------
+function K.Card(parent)
+  local c = Kit.Card(parent)
+  c.blizz = true
+  c.top:Hide()
+  BoxSkin(c)
+  BlizzFonts(c, { title = "GameFontNormalLarge", sub = "GameFontHighlightSmall", status = "GameFontHighlightSmall" })
+  BlizzFonts(c.ring, { text = "GameFontHighlightSmall" })
+  if c.art and c.art.bd then c.art.bd:SetColor(EDGE) end
+  Regions(c.art, function(t) if t ~= c.art.icon then t:SetVertexColor(0, 0, 0, 0.5) end end)
+  if c.line then
+    Regions(c.line, function(t) if t ~= c.line.mark then t:SetVertexColor(1, 1, 1, 0.05) end end)
+  end
+  for i, old in ipairs(c.buttons) do
+    old:Hide()
+    local b = K.Button(c, "", { small = true })
+    b:Hide()
+    c.buttons[i] = b
+  end
+  return Repaint(c, function(self, st)
+    Edge(self, st == "selected" and GOLD or st == "hover" and EDGE_HOT or EDGE)
+  end)
+end
+
+function K.CardRow(parent)
+  local r = CreateFrame("Frame", nil, parent)
+  r.cards, r.blizz = {}, true
+  function r:SetItem(it)
+    self.item = it
+    local list = it.cards or {}
+    for i, d in ipairs(list) do
+      local c = self.cards[i]
+      if not c then c = K.Card(self) self.cards[i] = c end
+      c:Show()
+      c:SetData(d)
+    end
+    for i = #list + 1, #self.cards do self.cards[i]:Hide() end
+    self:Layout(self._w or tonumber(self.GetWidth and self:GetWidth()) or 0)
+  end
+  function r:Layout(w)
+    w = tonumber(w) or 0
+    self._w = w
+    local gap = S.gap or 8
+    local cols = math.max(1, tonumber(self.item and self.item.cols) or 3)
+    local each = math.floor((w - 2 * gap - (cols - 1) * gap) / cols)
+    for i, c in ipairs(self.cards) do
+      if c:IsShown() then
+        c:ClearAllPoints()
+        c:SetPoint("TOPLEFT", self, "TOPLEFT", gap + (i - 1) * (each + gap), 0)
+        c:Layout(math.max(1, each))
+      end
+    end
+  end
+  return r
+end
+
+MAKER.sub, MAKER.zone, MAKER.cards, MAKER.trow, MAKER.done = K.SubRow, K.ZoneRow, K.CardRow, K.ItemRow, K.DoneRow
+
+---------------------------------------------------------------------------
+-- Sidebar 220 (icon rail 48): the game's search box on top, the List below on the marble ground; s.list holds ZoneRow
+-- items (or opts.kinds), s:Width(), s:Layout(h, rail), the list knows list.rail
+---------------------------------------------------------------------------
+function K.Sidebar(parent, opts)
+  opts = opts or {}
+  local s = CreateFrame("Frame", nil, parent)
+  s.blizz = true
+  s.line = s:CreateTexture(nil, "ARTWORK")
+  s.line:SetColorTexture(1, 1, 1, 0.16)
+  s.line:SetWidth(1)
+  s.line:SetPoint("TOPRIGHT") s.line:SetPoint("BOTTOMRIGHT")
+  if opts.search then
+    s.search = K.SearchBox(s, { placeholder = opts.search, onChange = opts.onSearch })
+    s.search:SetPoint("TOPLEFT", (S.gap or 8) + 6, -(S.gap or 8))
+  end
+  s.list = K.List(s, { onClick = opts.onClick, zebra = false, kinds = opts.kinds, onToggle = opts.onToggle })
+  function s:Width() return self.rail and (S.rail or 48) or (S.sidebar or 220) end
+  function s:Layout(h, rail)
+    self.rail = rail and true or nil
+    local w = self:Width()
+    self:SetSize(w, h)
+    local top = 0
+    if self.search then
+      if self.rail then self.search:Hide()
+      else
+        self.search:Show()
+        self.search:Layout(w - 2 * (S.gap or 8) - 6)
+        top = 22 + 2 * (S.gap or 8)
+      end
+    end
+    self.list:ClearAllPoints()
+    self.list:SetPoint("TOPLEFT", 0, -top)
+    self.list.rail = self.rail
+    self.list:Resize(w - 1, h - top)
+  end
+  return s
+end
+
+---------------------------------------------------------------------------
+-- Box: a part of a page on the game's tooltip box with a gold title over a fine gold line: b.head (controls on its
+-- right, b.headRoom keeps room for them), b.body, b:SetTitle(t), b:SetRight(t), b:Layout(w, h) -> body width, height;
+-- opts.onLayout(b, bodyW, bodyH)
+---------------------------------------------------------------------------
+function K.Box(parent, title, opts)
+  opts = opts or {}
+  local HEAD_H = S.sub or 28
+  local b = BoxFrame("Frame", parent)
+  b.blizz = true
+  b.head = CreateFrame("Frame", nil, b)
+  b.head:SetPoint("TOPLEFT", 4, -4) b.head:SetPoint("TOPRIGHT", -4, -4)
+  b.head:SetHeight(HEAD_H)
+  b.headLine = b.head:CreateTexture(nil, "ARTWORK")
+  b.headLine:SetColorTexture(1, 0.82, 0, 0.3)
+  b.headLine:SetHeight(1)
+  b.headLine:SetPoint("BOTTOMLEFT") b.headLine:SetPoint("BOTTOMRIGHT")
+  b.title = FS(b.head, "tab", GOLD)
+  b.title:SetPoint("LEFT", 8, 0)
+  b.right = FS(b.head, "sub", GREY)
+  b.right:SetJustifyH("RIGHT")
+  b.right:SetPoint("RIGHT", -8, 0)
+  b.body = CreateFrame("Frame", nil, b)
+  b.body:SetPoint("TOPLEFT", 4, -HEAD_H - 4)
+  function b:SetTitle(t) self.title:SetText(t or "") end
+  function b:SetRight(t) self.right:SetText(t or "") end
+  b.headRoom = 0
+  function b:Layout(w, h)
+    w, h = tonumber(w) or 0, tonumber(h) or 0
+    self:SetSize(w, h)
+    local rw = (self.right:GetText() or "") ~= "" and math.min(Width(self.right) + 4, math.floor(w * 0.4)) or 0
+    self.right:ClearAllPoints()
+    self.right:SetPoint("RIGHT", -8 - self.headRoom, 0)
+    self.right:SetWidth(math.max(1, rw))
+    self.title:SetWidth(math.max(20, w - 24 - self.headRoom - (rw > 0 and rw + 8 or 0)))
+    local bw, bh = math.max(1, w - 8), math.max(1, h - HEAD_H - 8)
+    self.body:SetSize(bw, bh)
+    if opts.onLayout then Try(opts.onLayout, self, bw, bh) end
+    return bw, bh
+  end
+  b:SetTitle(title)
+  return b
+end
+
+-- ScrollArea: the Kit's (a.content, SetContentHeight, Resize, SetOffset; the wheel scrolls), the thumb in the tone of
+-- the game's slim scroll bar
+function K.ScrollArea(parent)
+  local a = Kit.ScrollArea(parent)
+  a.blizz = true
+  if a.thumb then a.thumb:SetVertexColor(0.85, 0.7, 0.35, 0.9) a.thumb:SetWidth(4) end
+  return a
+end
+
+---------------------------------------------------------------------------
+-- Money: MoneyBox (one of the game's input boxes, "12g 50s" or "12,5"), CoinBox (three of them with the coins); the
+-- Kit's calls: GetValue() copper, SetValue(copper), GetText, SetNext, SetFocus, Layout(w); opts.onChange(copper, box),
+-- opts.onEnter(copper, box), opts.placeholder
+---------------------------------------------------------------------------
+function K.MoneyBox(parent, opts)
+  opts = opts or {}
+  local m
+  m = K.EditBox(parent, { placeholder = opts.placeholder, maxLetters = 24, selectAll = opts.selectAll ~= false, width = opts.width or 100,
+    onChange = function(t) if opts.onChange then Try(opts.onChange, Kit.ParseMoney(t), m) end end,
+    onEnter = function() if opts.onEnter then Try(opts.onEnter, Kit.ParseMoney(m:GetText()), m) end end,
+    onLeave = function(self) local c = Kit.ParseMoney(self:GetText()) if c then self:SetValue(c) end end })
+  m.blizz = true
+  local setRaw = m.SetValue
+  function m:GetValue() return Kit.ParseMoney(self:GetText()) end
+  function m:SetValue(c)
+    c = tonumber(c)
+    setRaw(self, c and Kit.Money(c, { letters = true, full = true }) or "")
+  end
+  return m
+end
+
+function K.CoinBox(parent, opts)
+  opts = opts or {}
+  local m = CreateFrame("Frame", nil, parent)
+  m:SetHeight(22)
+  m.boxes, m.coins, m.blizz = {}, {}, true
+  local function changed() if opts.onChange then Try(opts.onChange, m:GetValue(), m) end end
+  local function enter() if opts.onEnter then Try(opts.onEnter, m:GetValue(), m) end end
+  for i = 1, 3 do
+    local b = K.EditBox(m, { numeric = true, maxLetters = i == 1 and 7 or 2, min = 0, max = i > 1 and 99 or nil,
+      onChange = changed, onEnter = enter, width = i == 1 and 60 or 26 })
+    m.boxes[i] = b
+    m.coins[i] = m:CreateTexture(nil, "ARTWORK")
+    m.coins[i]:SetTexture(Kit.COINS and Kit.COINS[i])
+    m.coins[i]:SetSize(12, 12)
+  end
+  m.boxes[1]:SetNext(m.boxes[2]) m.boxes[2]:SetNext(m.boxes[3])
+  function m:GetValue()
+    local any, total = false, 0
+    for i, b in ipairs(self.boxes) do
+      local n = tonumber(b:GetText() or "")
+      if n then any = true total = total + n * (i == 1 and 10000 or i == 2 and 100 or 1) end
+    end
+    return any and total or nil
+  end
+  function m:GetText()
+    local c = self:GetValue()
+    return c and ("%dg %ds %dc"):format(math.floor(c / 10000), math.floor(c / 100) % 100, c % 100) or ""
+  end
+  function m:SetValue(c)
+    c = tonumber(c)
+    if not c then for _, b in ipairs(self.boxes) do b:SetValue("") end return end
+    c = math.floor(c + 0.5)
+    self.boxes[1]:SetValue(math.floor(c / 10000)) self.boxes[2]:SetValue(math.floor(c / 100) % 100) self.boxes[3]:SetValue(c % 100)
+  end
+  function m:SetText(t) self:SetValue(Kit.ParseMoney(t)) end
+  function m:SetNext(other) self.boxes[3]:SetNext(other) end
+  function m:SetFocus() self.boxes[1]:SetFocus() end
+  function m:ClearFocus() for _, b in ipairs(self.boxes) do b:ClearFocus() end end
+  -- the input box's art reaches 5 px left of it: the first box starts there
+  function m:Layout(w)
+    w = tonumber(w) or 140
+    self._w = w
+    self:SetWidth(w)
+    local coin, gap, small, x = 12, 2, 24, 6
+    local gold = math.max(24, w - x - 2 * small - 3 * (coin + gap) - 2 * 10)
+    for i, b in ipairs(self.boxes) do
+      local bw = i == 1 and gold or small
+      b:ClearAllPoints() b:SetPoint("LEFT", self, "LEFT", x, 0) b:Layout(bw)
+      self.coins[i]:ClearAllPoints() self.coins[i]:SetPoint("LEFT", self, "LEFT", x + bw + gap, 0)
+      x = x + bw + gap + coin + 10
+    end
+  end
+  m:Layout(opts.width or 140)
+  if opts.value ~= nil then m:SetValue(opts.value) end
+  return m
+end
+
+---------------------------------------------------------------------------
+-- Columns (small bars side by side: c:SetValues(values, labels), c:Layout(w, h)) and ProgressBar (SetValue(0..1),
+-- SetColor, Layout(w), value) on the game's status bar texture over a dark track
+---------------------------------------------------------------------------
+function K.Columns(parent, n)
+  local c = CreateFrame("Frame", nil, parent)
+  c.cols, c.n, c.blizz = {}, n or 7, true
+  for i = 1, c.n do
+    local b = CreateFrame("Frame", nil, c)
+    b.track = b:CreateTexture(nil, "BACKGROUND")
+    b.track:SetAllPoints()
+    b.track:SetColorTexture(0, 0, 0, 0.45)
+    b.fill = b:CreateTexture(nil, "ARTWORK")
+    b.fill:SetTexture(BARTEX)
+    b.fill:SetPoint("BOTTOMLEFT") b.fill:SetPoint("BOTTOMRIGHT")
+    if b.EnableMouse then b:EnableMouse(true) end
+    b:SetScript("OnEnter", function(self) if self.tip then KitTip(self, self.tip[1], { self.tip[2] }) end end)
+    b:SetScript("OnLeave", HideTip)
+    c.cols[i] = b
+  end
+  function c:SetValues(values, labels)
+    self.values, self.labels = values or {}, labels or {}
+    self:Layout(self._w or tonumber(self.GetWidth and self:GetWidth()) or 0, self._h or tonumber(self.GetHeight and self:GetHeight()) or 0)
+  end
+  function c:Layout(w, h)
+    w, h = tonumber(w) or 0, tonumber(h) or 0
+    self._w, self._h = w, h
+    self:SetSize(math.max(1, w), math.max(1, h))
+    local top = 0
+    for i = 1, self.n do top = math.max(top, tonumber(self.values and self.values[i]) or 0) end
+    local gap = 3
+    local cw = math.max(2, (w - gap * (self.n - 1)) / self.n)
+    for i, b in ipairs(self.cols) do
+      b:ClearAllPoints()
+      b:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", (i - 1) * (cw + gap), 0)
+      b:SetSize(cw, math.max(1, h))
+      local v = tonumber(self.values and self.values[i]) or 0
+      local fh = top > 0 and math.max(v > 0 and 2 or 0, math.floor(h * v / top)) or 0
+      if fh > 0 then b.fill:SetHeight(fh) b.fill:Show() else b.fill:Hide() end
+      if i == self.n then b.fill:SetVertexColor(1, 0.82, 0, 1) else b.fill:SetVertexColor(0.78, 0.6, 0.12, 1) end
+      local lab = self.labels and self.labels[i]
+      b.tip = lab and { lab, self.values and self.values[i] ~= nil and tostring(self.values[i]) or nil } or nil
+    end
+  end
+  return c
+end
+
+function K.ProgressBar(parent, color)
+  local f = CreateFrame("Frame", nil, parent)
+  f:SetHeight(S.bar or 6)
+  f.blizz = true
+  f.track = f:CreateTexture(nil, "BACKGROUND")
+  f.track:SetAllPoints()
+  f.track:SetColorTexture(0, 0, 0, 0.5)
+  f.fill = f:CreateTexture(nil, "ARTWORK")
+  f.fill:SetTexture(BARTEX)
+  f.fill:SetPoint("TOPLEFT") f.fill:SetPoint("BOTTOMLEFT")
+  f.value = 0
+  function f:SetColor(c) local r, g, b = Col3(c, GOLD) self.fill:SetVertexColor(r, g, b, 1) end
+  function f:SetValue(v)
+    self.value = math.max(0, math.min(1, tonumber(v) or 0))
+    local w = self._w or tonumber(self.GetWidth and self:GetWidth()) or 0
+    if self.value <= 0 or w <= 0 then self.fill:Hide() return end
+    self.fill:SetWidth(math.max(1, w * self.value))
+    self.fill:Show()
+  end
+  function f:Layout(w) self._w = w self:SetWidth(w) self:SetValue(self.value) end
+  f:SetColor(color)
+  return f
+end
+
+---------------------------------------------------------------------------
+-- Chip: one of the game's small buttons, held down while selected; c:SetText, c:SetCount(n), c:SetSelected(on),
+-- c:SetTooltip; opts.add (the chip that adds something) a little fainter
+---------------------------------------------------------------------------
+function K.Chip(parent, text, onClick, opts)
+  opts = opts or {}
+  local c = K.Button(parent, text or "", { small = true, onClick = onClick })
+  c.name, c.add, c.chip = text or "", opts.add and true or nil, true
+  local setText, setSel = c.SetText, c.SetSelected
+  local function Label(self) setText(self, self._count and (self.name .. "  " .. self._count) or self.name) end
+  function c:SetText(t) self.name = t or "" Label(self) end
+  -- as the Kit: a number or a short text ("3 undercut"), in a colour (a Kit.C or STATUS key or rgb; default gold)
+  function c:SetCount(n, color)
+    if n == nil or n == "" then self._count = nil
+    else
+      local r, g, b = Col3(color, { 1, 0.82, 0 })
+      self._count = ("|cff%02x%02x%02x%s|r"):format(math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5), tostring(n))
+      self.countText = tostring(n)
+    end
+    Label(self)
+  end
+  function c:SetSelected(on)
+    setSel(self, on)
+    local fs = self.GetFontString and self:GetFontString()
+    if type(fs) == "table" and fs.SetTextColor then if on then fs:SetTextColor(1, 1, 1) else fs:SetTextColor(1, 0.82, 0) end end
+    return self
+  end
+  if c.add then c:SetAlpha(0.8) end
+  return c
+end
+
+---------------------------------------------------------------------------
+-- Buttons that act protected: SecureButton (the game's red button with the secure template; b:SetLabel(text), b.text)
+-- and ItemButton (the Kit's, on the action buttons' slot art); the Kit's where the client lacks the template
+---------------------------------------------------------------------------
+function K.SecureButton(name, parent, opts)
+  opts = opts or {}
+  if not Has("UIPanelButtonTemplate") then return Kit.SecureButton(name, parent, opts) end
+  local b = CreateFrame("Button", name, parent, "SecureActionButtonTemplate,UIPanelButtonTemplate")
+  b.blizz = true
+  b:SetHeight(tonumber(opts.height) or 24)
+  b:SetWidth(tonumber(opts.width) or 200)
+  local down = type(GetCVarBool) == "function" and GetCVarBool("ActionButtonUseKeyDown")
+  if b.RegisterForClicks then b:RegisterForClicks(opts.clicks or (down and "AnyDown" or "AnyUp")) end
+  b.text = Part(b, "Text") or (b.GetFontString and b:GetFontString()) or nil
+  function b:SetLabel(text)
+    self:SetText(text or "")
+    if not self.text and self.GetFontString then self.text = self:GetFontString() end
+  end
+  if opts.text then b:SetLabel(opts.text) end
+  return b
+end
+
+function K.ItemButton(name, parent, opts)
+  opts = opts or {}
+  local b = Kit.ItemButton(name, parent, opts)
+  b.blizz = true
+  if b.bd and b.bd.SetColor then b.bd:SetColor(EDGE, 0) end
+  if b.bg then b.bg:SetVertexColor(0, 0, 0, 0.6) end
+  if opts.frame ~= false then
+    local s = math.floor((tonumber(opts.size) or 36) * 66 / 36 + 0.5)
+    b.slot = b:CreateTexture(nil, "ARTWORK", nil, 1)
+    b.slot:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    b.slot:SetSize(s, s)
+    b.slot:SetPoint("CENTER", 0, 0)
+  end
+  return b
+end
+
+---------------------------------------------------------------------------
+-- Menu: the game's context menu (MenuUtil, Blizzard_Menu) with the Kit's call K.Menu(title, items, anchor):
+-- items = { { text, onClick(item), disabled, tooltip = { title, lines } }, ... }; K.Menu.Hide(), K.Menu.Frame().
+-- Where the client has no MenuUtil the Kit's menu opens.
+---------------------------------------------------------------------------
+local menuFrame
+K.Menu = setmetatable({}, { __call = function(_, title, items, anchor)
+  local MU = rawget(_G, "MenuUtil")
+  if not (type(MU) == "table" and type(MU.CreateContextMenu) == "function") then
+    menuFrame = nil
+    return Kit.Menu(title, items, anchor)
+  end
+  local ok, m = pcall(MU.CreateContextMenu, anchor or UIParent, function(_, root)
+    if title and title ~= "" and root.CreateTitle then root:CreateTitle(title) end
+    for _, it in ipairs(items or {}) do
+      local e = root:CreateButton(tostring(it.text or ""), function() Try(it.onClick, it) end)
+      if e and it.disabled and e.SetEnabled then e:SetEnabled(false) end
+      if e and type(it.tooltip) == "table" and e.SetTooltip then
+        e:SetTooltip(function(tt)
+          if tt and tt.SetText then tt:SetText(tostring(it.tooltip[1] or ""), 1, 0.82, 0) end
+          for _, l in ipairs(type(it.tooltip[2]) == "table" and it.tooltip[2] or {}) do
+            if tt and tt.AddLine then tt:AddLine(tostring(type(l) == "table" and (l[1] or "") or l), 1, 1, 1, true) end
+          end
+        end)
+      end
+    end
+  end)
+  if ok then menuFrame = m return m end
+  menuFrame = nil
+  return Kit.Menu(title, items, anchor)
+end })
+function K.Menu.Hide()
+  if menuFrame and menuFrame.Close then pcall(menuFrame.Close, menuFrame) end
+  menuFrame = nil
+  if Kit.Menu and Kit.Menu.Hide then Kit.Menu.Hide() end
+end
+function K.Menu.Frame() return menuFrame or (Kit.Menu and Kit.Menu.Frame and Kit.Menu.Frame()) end
+
+---------------------------------------------------------------------------
+-- TextBox: several lines on the game's tooltip box (gold edge while typing), a quiet placeholder; the Kit's calls:
+-- t:GetText(), t:SetText(s), t:Layout(w, h), t.edit; opts.placeholder, opts.maxLetters, opts.onChange(text, box)
+---------------------------------------------------------------------------
+function K.TextBox(parent, opts)
+  opts = opts or {}
+  local t = BoxFrame("Frame", parent)
+  t.blizz = true
+  local e = CreateFrame("EditBox", nil, t)
+  if e.SetMultiLine then e:SetMultiLine(true) end
+  if e.SetAutoFocus then e:SetAutoFocus(false) end
+  if e.SetMaxLetters then e:SetMaxLetters(opts.maxLetters or 400) end
+  if e.SetFontObject then pcall(e.SetFontObject, e, "GameFontHighlight") end
+  e:SetPoint("TOPLEFT", 8, -7)
+  e:SetPoint("BOTTOMRIGHT", -8, 7)
+  t.edit = e
+  t.hint = t:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+  t.hint:SetPoint("TOPLEFT", 8, -8)
+  if t.hint.SetJustifyH then t.hint:SetJustifyH("LEFT") end
+  t.hint:SetText(opts.placeholder or "")
+  e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+  e:SetScript("OnTextChanged", function(self, user)
+    local s = self:GetText() or ""
+    if s == "" then t.hint:Show() else t.hint:Hide() end
+    if user and opts.onChange then Try(opts.onChange, s, t) end
+  end)
+  e:SetScript("OnEditFocusGained", function() t:SetEdge(1, 0.82, 0) end)
+  e:SetScript("OnEditFocusLost", function() t:SetEdge(EDGE[1], EDGE[2], EDGE[3]) end)
+  if t.EnableMouse then t:EnableMouse(true) end
+  t:SetScript("OnMouseDown", function() if e.SetFocus then e:SetFocus() end end)
+  function t:GetText() return self.edit:GetText() or "" end
+  function t:SetText(s)
+    self.edit:SetText(s or "")
+    if (s or "") == "" then self.hint:Show() else self.hint:Hide() end
+  end
+  function t:Layout(w, h)
+    self:SetSize(w, h or 64)
+    if self.hint.SetWidth then self.hint:SetWidth(math.max(10, (tonumber(w) or 0) - 16)) end
+  end
+  return t
+end
+
+---------------------------------------------------------------------------
+-- (minor 5, Vitaldon) Hint: one line with a mark, the Kit's (h:SetHint(text, kind) warn / red / good / accent / text,
+-- h:Layout(w) -> its height, h.kind, h.text), in the game's fonts
+---------------------------------------------------------------------------
+function K.Hint(parent)
+  local h = Kit.Hint(parent)
+  h.blizz = true
+  BlizzFonts(h, { bang = "GameFontNormal", text = "GameFontHighlightSmall" })
+  return h
 end

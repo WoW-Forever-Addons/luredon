@@ -272,6 +272,27 @@ function ns.AtlasKinds()
   end
   Scan(ns.ZONE_FISH, false)
   Scan(ns.ZONE_FISH_CLASSIC, true)
+  -- (17.11.2026) fish only at schools or in parts of a zone (Sagefish, Deviate Fish): share 0, where it bites as spot
+  for map, list in pairs(ns.ZONE_FISH_SPOTS or {}) do
+    local classic = not (ns.ZONE_FISH and ns.ZONE_FISH[map]) or nil
+    for _, e in ipairs(list) do
+      local id, kind, where = Num(e[1]), e[3], e[4]
+      if id then
+        local k = Kind(id, kind == "c" and "c" or "f")
+        local dup = false
+        for _, z in ipairs(k.zones) do if z.map == map then dup = true break end end
+        if not dup then
+          k.zones[#k.zones + 1] = { map = map, share = 0, classic = classic, spot = where }
+          if not classic then k.classic = false end
+          -- a part of a zone with its own fish is mostly the part that needs more skill (Jademir Lake)
+          local need = ns.ZONE_SKILL and ns.ZONE_SKILL[map]
+          local part = where ~= 0 and ns.ZONE_SKILL_PARTS and ns.ZONE_SKILL_PARTS[map]
+          if part and (not need or part > need) then need = part end
+          if need and (not k.minSkill or need < k.minSkill) then k.minSkill = need end
+        end
+      end
+    end
+  end
   local lb = ns.db and ns.db.logbook
   for id, e in pairs(type(lb) == "table" and type(lb.fish) == "table" and lb.fish or {}) do
     id = Num(id)
@@ -368,6 +389,11 @@ local function Coins(copper)
   return Kit.Money(math.floor(copper))
 end
 local function ZoneName(m) return (m and ns.MapName(m)) or L["unknown"] end
+-- (17.11.2026) a zone's share, or where in it the fish bites (school, part of the zone)
+local function ZoneShare(z)
+  if z.spot ~= nil and ns.SpotText then return ns.SpotText(z.spot) end
+  return Style.Percent(z.share)
+end
 
 local WEEKDAYS = { L["Sunday"], L["Monday"], L["Tuesday"], L["Wednesday"], L["Thursday"], L["Friday"], L["Saturday"] }
 local MONTHS = { L["January"], L["February"], L["March"], L["April"], L["May"], L["June"], L["July"], L["August"],
@@ -626,7 +652,7 @@ local function KindCard(k)
     d.right, d.status = k.caught, "green"
   else
     local z = k.zones[1]
-    local where = z and (ZoneName(z.map) .. (z.share > 0 and ("  " .. Style.Percent(z.share)) or "")) or L["unknown"]
+    local where = z and (ZoneName(z.map) .. ((z.spot ~= nil or z.share > 0) and ("  " .. ZoneShare(z)) or "")) or L["unknown"]
     d.sub = (k.minSkill and (L["skill %d"]:format(k.minSkill) .. "  ·  ") or "") .. where
     d.right = k.classic and L["classic"] or L["new"]
     d.rightColor = k.classic and KC.quiet or KC.yellow
@@ -645,7 +671,7 @@ local function KindCard(k)
     end
     for j = 1, math.min(4, #k.zones) do
       local z = k.zones[j]
-      lines[#lines + 1] = { ZoneName(z.map), Style.Percent(z.share) .. (z.classic and (" " .. L["(Classic)"]) or "") }
+      lines[#lines + 1] = { ZoneName(z.map), ZoneShare(z) .. (z.classic and (" " .. L["(Classic)"]) or "") }
     end
     return name, lines, L["Click: details on the right."]
   end
@@ -757,13 +783,16 @@ local function ZoneFishItems(m)
     local caughtHere = (e.caught or 0) > 0
     local it = { kind = "table", e = e, own = own, icon = ItemIcon(e.id), quality = Quality(e.id), dim = not caughtHere or nil,
       cells = { name,
-        { bar = e.share and math.min(1, e.share) or 0, text = e.share and Style.Percent(e.share) or "-", barColor = KC.grey },
+        { bar = (not e.spot and e.share) and math.min(1, e.share) or 0, text = e.spotText or (e.share and Style.Percent(e.share)) or "-", barColor = KC.grey },
         { bar = own and math.min(1, own) or 0, text = own and Style.Percent(own) or "-", barColor = KC.goldBright },
         caughtHere and { tostring(e.caught), KC.green } or { L["new"], KC.yellow } } }
     it.onClick = function() selKind = e.id if ns.OpenBook then ns.OpenBook("atlas") end end
     it.tooltipFn = function()
       local lines = {}
-      if e.share then
+      if e.spot ~= nil then
+        lines[#lines + 1] = { L["Where it bites"], e.spotText or "" }
+        if e.share then lines[#lines + 1] = { e.classic and L["Share (CMaNGOS, classic)"] or L["Share (CMaNGOS)"], Style.Percent(e.share) } end
+      elseif e.share then
         local label = e.classic and L["Share (CMaNGOS, classic)"] or e.fromOwn and L["Share (Luredon's own catches)"] or L["Share (CMaNGOS)"]
         lines[#lines + 1] = { label, Style.Percent(e.share) }
       end
@@ -1121,8 +1150,8 @@ local function FillDetail(k)
   local entries = {}
   for i = 1, math.min(5, #k.zones) do
     local z = k.zones[i]
-    local pct = Style.Percent(z.share) .. (z.classic and ("  " .. L["(Classic)"]) or "")
-    entries[#entries + 1] = { key = z.map, text = ZoneName(z.map), value = z.share, value2 = z.share, right = Style.Percent(z.share),
+    local pct = ZoneShare(z) .. (z.classic and ("  " .. L["(Classic)"]) or "")
+    entries[#entries + 1] = { key = z.map, text = ZoneName(z.map), value = z.share, value2 = z.share, right = ZoneShare(z),
       color = z.classic and KC.grey or KC.gold, tooltip = { ZoneName(z.map), { pct } } }
     text[#text + 1] = ZoneName(z.map) .. " " .. pct
   end

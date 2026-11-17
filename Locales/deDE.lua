@@ -338,6 +338,7 @@ L["You have no catches here yet. Shared by Luredon players in your guild and gro
 L["min. skill %d (reported)"] = "Mindestskill %d (gemeldet)"
 -- (1.2) fish of the zone (ZoneFish.lua, Data_Fish.lua)
 L["Fish in this zone"] = "Fische in dieser Zone"
+L["school (fishing)"] = "Schwarm"
 L["(container)"] = "(Behälter)"
 L["No fishing waters known in this zone."] = "In dieser Zone sind keine Angelgewässer bekannt."
 L["Shares according to CMaNGOS. You have no catches here yet."] = "Anteile laut CMaNGOS. Du hast hier noch nichts gefangen."

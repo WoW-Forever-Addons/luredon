@@ -342,6 +342,7 @@ L["min. skill %d (reported)"] = "最低技能%d(玩家回報)"
 
 -- (1.2) 區域魚類(ZoneFish.lua、Data_Fish.lua)
 L["Fish in this zone"] = "此區域的魚類"
+L["school (fishing)"] = "魚群"
 L["(container)"] = "(容器)"
 L["No fishing waters known in this zone."] = "此區域沒有已知的釣魚水域。"
 L["Shares according to CMaNGOS. You have no catches here yet."] = "比例取自 CMaNGOS。你在這裡還沒有任何漁獲。"

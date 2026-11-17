@@ -342,6 +342,7 @@ L["min. skill %d (reported)"] = "%d requis (signalé)"
 
 -- (1.2) fish of the zone (ZoneFish.lua, Data_Fish.lua)
 L["Fish in this zone"] = "Poissons de cette zone"
+L["school (fishing)"] = "banc"
 L["(container)"] = "(conteneur)"
 L["No fishing waters known in this zone."] = "Aucun coin de pêche connu dans cette zone."
 L["Shares according to CMaNGOS. You have no catches here yet."] = "Proportions selon CMaNGOS. Vous n’avez encore rien pêché ici."

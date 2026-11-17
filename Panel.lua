@@ -107,7 +107,7 @@ local function ZoneFishLines(lines, list, onlyNew)
       local left = ItemText(e.id)
       if e.kind == "c" then left = left .. " " .. Style.Colorize(L["(container)"], "textHint")
       elseif IsRare(e.id) then left = left .. " " .. Style.Colorize(L["(rare)"], "warning") end
-      local right = e.share and ("~" .. Style.Percent(e.share)) or ""
+      local right = e.spotText or (e.share and ("~" .. Style.Percent(e.share))) or ""
       lines[#lines + 1] = { left, right, "textSecondary" }
     end
   end

@@ -342,6 +342,7 @@ L["min. skill %d (reported)"] = "habilidad mín. %d (reportada)"
 
 -- (1.2) fish of the zone (ZoneFish.lua, Data_Fish.lua)
 L["Fish in this zone"] = "Peces en esta zona"
+L["school (fishing)"] = "banco"
 L["(container)"] = "(contenedor)"
 L["No fishing waters known in this zone."] = "No se conocen aguas de pesca en esta zona."
 L["Shares according to CMaNGOS. You have no catches here yet."] = "Porcentajes según CMaNGOS. Aún no tienes capturas aquí."

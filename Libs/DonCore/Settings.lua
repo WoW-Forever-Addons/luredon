@@ -1,6 +1,12 @@
-local M = LibStub("DonCore-1.0"):NewModule("Settings", 3)
+local M = LibStub("DonCore-1.0"):NewModule("Settings", 4)
 if not M then return end
 local Core = LibStub("DonCore-1.0")
+
+-- (minor 4, 16.11.2026, Blizzard look for Guildon, Guildon Crafts, Golddon) a dropdown takes the type of its default
+-- (numbers stay numbers: Crafts' wish days, Golddon's money steps). The spec may name its own table and words, like
+-- Options.Register: spec.db() (the table of the values, default ns.db), spec.default(key) (default ns.defaults[key]),
+-- spec.changed(key, value) (after the item's onChange, for every option of the pages), spec.T(text) (the module's words
+-- and the item texts, default ns.L).
 
 -- (minor 2, 01.11.2026, STYLEKIT_PLAN.md "Schritt 3") with DonCore's Options module loaded (Libs\DonCore\Options.lua)
 -- ns.BuildSettings(spec) puts the same pages into the one options window of all Don addons (Options.FromSettings) and
@@ -49,14 +55,40 @@ end
 local function VarType(kind, default)
   local types = Settings.VarType or {}
   if kind == "slider" then return types.Number or "number" end
-  if kind == "dropdown" then return types.String or type(default) end
+  if kind == "dropdown" then
+    if type(default) == "number" then return types.Number or "number" end -- (minor 4)
+    if type(default) == "boolean" then return types.Boolean or "boolean" end
+    return types.String or type(default)
+  end
   return types.Boolean or "boolean"
 end
 
 function M:Attach(addonName, ns)
   assert(type(addonName) == "string" and type(ns) == "table", "DonCore Settings:Attach(addonName, ns)")
   local function Var(key) return addonName .. "_" .. key end
-  local function L(key) return ns.L and ns.L[key] or key end
+  -- (minor 4) the spec of the last BuildSettings: its own table, defaults, words and change callback
+  local cur = {}
+  local function L(key)
+    if type(cur.T) == "function" then
+      local ok, s = pcall(cur.T, key)
+      if ok and s ~= nil then return s end
+    end
+    return ns.L and ns.L[key] or key
+  end
+  local function DB()
+    if type(cur.db) == "function" then
+      local ok, t = pcall(cur.db)
+      if ok and type(t) == "table" then return t end
+    end
+    return ns.db
+  end
+  local function Default(key)
+    if type(cur.default) == "function" then
+      local ok, v = pcall(cur.default, key)
+      if ok then return v end
+    end
+    return ns.defaults and ns.defaults[key]
+  end
   -- Questdon, Vitaldon, Geardon, Dropdon have ns.Guard; Luredon has ns.Safe (same shape)
   local function Guard(context, fn)
     local g = ns.Guard or ns.Safe
@@ -79,8 +111,9 @@ function M:Attach(addonName, ns)
   local settingsByKey, refreshing = {}, false
   function ns.RefreshSettingsUI()
     refreshing = true
+    local db = DB()
     for key, setting in pairs(settingsByKey) do
-      local v = ns.db[key]
+      local v = db and db[key]
       if setting.GetValue and setting.SetValue then
         local ok, cur = pcall(setting.GetValue, setting)
         if ok and cur ~= v then pcall(setting.SetValue, setting, v) end
@@ -108,8 +141,10 @@ function M:Attach(addonName, ns)
     end
     local kind = item.kind or "check"
     if kind == "choice" then return end -- (29.10.2026) only in Questdon's window; Blizzard's panel keeps the two switches
-    local default = ns.defaults[item.key]
-    local setting = Settings.RegisterAddOnSetting(category, Var(item.key), item.key, ns.db,
+    local default = Default(item.key)
+    local db = DB()
+    if db[item.key] == nil and default ~= nil then db[item.key] = default end -- (minor 4) a value never saved: its default
+    local setting = Settings.RegisterAddOnSetting(category, Var(item.key), item.key, db,
       VarType(kind, default), L(item.name), default)
     if setting then settingsByKey[item.key] = setting end
 
@@ -140,16 +175,19 @@ function M:Attach(addonName, ns)
       end
       if item.parent then
         if init.Indent then init:Indent() end
-        init:AddModifyPredicate(function() return ns.db[item.parent] and true or false end)
+        init:AddModifyPredicate(function() return DB()[item.parent] and true or false end)
         if init.AddEvaluateStateCVar then init:AddEvaluateStateCVar(Var(item.parent)) end
       end
     end
     Settings.RegisterInitializer(category, init)
 
-    if item.onChange and Settings.SetOnValueChangedCallback then
+    local changed = cur.changed -- (minor 4)
+    if (item.onChange or changed) and Settings.SetOnValueChangedCallback then
       Settings.SetOnValueChangedCallback(Var(item.key), Guard("setting", function()
         if refreshing then return end -- a value shown again, not changed by the player
-        item.onChange(ns.db[item.key])
+        local v = DB()[item.key]
+        if item.onChange then item.onChange(v) end
+        if changed then changed(item.key, v) end
       end))
     end
   end
@@ -160,6 +198,7 @@ function M:Attach(addonName, ns)
   end
 
   function ns.BuildSettings(spec)
+    cur = spec -- (minor 4)
     local Opt = Core:Get("Options", 1)
     -- (minor 3, 16.11.2026, Blizzard look) spec.fullPages: the addon wants its pages in Blizzard's settings as without
     -- the Options module (it opens them there, Options spec.redirect); DonCore's window keeps its tabs as well

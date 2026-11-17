@@ -342,6 +342,7 @@ L["min. skill %d (reported)"] = "최소 숙련도 %d (보고됨)"
 
 -- (1.2) fish of the zone (ZoneFish.lua, Data_Fish.lua)
 L["Fish in this zone"] = "이 지역의 물고기"
+L["school (fishing)"] = "물고기 떼"
 L["(container)"] = "(상자)"
 L["No fishing waters known in this zone."] = "이 지역에는 알려진 낚시터가 없습니다."
 L["Shares according to CMaNGOS. You have no catches here yet."] = "비율은 CMaNGOS 기준입니다. 아직 이곳에서 낚은 것이 없습니다."

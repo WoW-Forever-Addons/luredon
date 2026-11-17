@@ -8,9 +8,10 @@
 -- for a zone (ns.ZONE_FISH_OWN) or lacks a fish we caught there, from 20 catches in a zone, shared
 -- catches from 1 reporters on (our own count as one); CMaNGOS chances are kept (rules: build_fish.py
 -- RECORDED). This file is under the GNU General Public License v3 (see LICENSE-GPLv3.txt). Fishing
--- schools (pools) are not in the CMaNGOS lists; recorded catches may include pool catches.
+-- schools (pools) and parts of a zone with their own fish are in ns.ZONE_FISH_SPOTS at the end;
+-- recorded catches may include pool catches.
 local _, ns = ...
-ns.ZONE_FISH_DATE = "2026-11-07"
+ns.ZONE_FISH_DATE = "2026-11-17"
 ns.ZONE_FISH = {
   [1411] = { { 6303, 98.0, "f" }, { 6356, 2.0, "c" } },
   [1412] = { { 6291, 59.4, "f" }, { 6289, 40.4, "f" }, { 6643, 0.2, "c" } },
@@ -42,7 +43,7 @@ ns.ZONE_FISH_OWN = { [2521] = true }
 -- Zones above level 30 (Forever has not opened them yet): the same CMaNGOS data. Used only where
 -- ns.ZONE_FISH has no list, and shown as "classic data, not confirmed for Forever" until a catch
 -- confirms it.
-ns.ZONE_FISH_CLASSIC_DATE = "2026-11-07"
+ns.ZONE_FISH_CLASSIC_DATE = "2026-11-17"
 ns.ZONE_FISH_CLASSIC = {
   [1416] = { { 8365, 59.2, "f" }, { 6308, 40.5, "f" }, { 8366, 0.3, "c" } },
   [1417] = { { 8365, 59.2, "f" }, { 6308, 40.5, "f" }, { 8366, 0.3, "c" } },
@@ -65,8 +66,37 @@ ns.ZONE_FISH_CLASSIC = {
   [1451] = { { 13889, 30.8, "f" }, { 13759, 17.2, "f" }, { 13760, 17.2, "f" }, { 13890, 17.2, "f" }, { 13757, 12.1, "f" }, { 13758, 5.1, "f" }, { 13891, 0.4, "c" } },
   [1452] = { { 13889, 30.8, "f" }, { 13759, 17.2, "f" }, { 13760, 17.2, "f" }, { 13890, 17.2, "f" }, { 13757, 12.1, "f" }, { 13758, 5.1, "f" }, { 13891, 0.4, "c" } },
 }
+-- (2026-11-17) Fish the lists above lack because they bite only at a school (pool) or in a part of a zone:
+-- { itemID, share in percent, kind, where }, where 0 = school (share among its fish and containers), else
+-- the area IDs of the parts (share in the first). Schools: CMaNGOS spawns, ATT (MIT) where CMaNGOS has none.
+ns.ZONE_FISH_SPOTS = {
+  [1411] = { { 6291, 59.4, "f", { 367, 814, 2979 } }, { 6289, 40.4, "f", { 367, 814, 2979 } }, { 6643, 0.2, "c", { 367, 814, 2979 } } },
+  [1413] = { { 20708, 100.0, "c", 0 }, { 21150, 100.0, "c", 0 }, { 6522, 94.4, "f", 0 }, { 6289, 52.7, "f", { 382, 384, 386, 387, 388, 815, 1156, 1701 } }, { 6308, 30.5, "f", { 384, 382, 386, 387, 388, 815, 1156, 1701 } }, { 6291, 18.3, "f", { 384, 382, 386, 387, 388, 815, 1156, 1701 } }, { 6458, 14.6, "f", { 382 } }, { 6645, 0.4, "c", { 382, 384, 386, 387, 388, 815, 1156, 1701 } } },
+  [1416] = { { 21113, 100.0, "c", 0 }, { 21150, 100.0, "c", 0 }, { 21071, 94.4, "f", 0 }, { 21153, 94.4, "f", 0 } },
+  [1417] = { { 21150, 100.0, "c", 0 }, { 6362, 55.2, "f", { 327, 328 } }, { 4603, 20.0, "f", { 327, 328 } }, { 6358, 12.0, "f", { 327, 328 } }, { 6359, 12.0, "f", { 327, 328 } }, { 6355, 0.4, "c", { 327, 328 } }, { 6357, 0.4, "c", { 327, 328 } } },
+  [1419] = { { 21150, 100.0, "c", 0 }, { 21228, 100.0, "c", 0 } },
+  [1420] = { { 6303, 98.0, "f", { 168, 169 } }, { 6356, 2.0, "c", { 168, 169 } } },
+  [1421] = { { 21150, 100.0, "c", 0 }, { 6361, 50.0, "f", { 226, 305, 306, 2398 } }, { 6303, 33.5, "f", { 226, 305, 306, 2398 } }, { 6358, 15.0, "f", { 226, 305, 306, 2398 } }, { 6307, 0.5, "c", { 226, 305, 306, 2398 } }, { 6351, 0.5, "c", { 226, 305, 306, 2398 } }, { 6353, 0.5, "c", { 226, 305, 306, 2398 } } },
+  [1423] = { { 21228, 100.0, "c", 0 } },
+  [1424] = { { 21113, 100.0, "c", 0 }, { 21150, 100.0, "c", 0 }, { 21071, 94.4, "f", 0 }, { 6361, 58.8, "f", { 271, 294, 295 } }, { 6358, 25.0, "f", { 271, 294, 295 } }, { 6359, 15.0, "f", { 271, 294, 295 } }, { 6307, 0.4, "c", { 271, 294, 295 } }, { 6352, 0.4, "c", { 271, 294, 295 } }, { 6354, 0.4, "c", { 271, 294, 295 } } },
+  [1425] = { { 21150, 100.0, "c", 0 }, { 13755, 50.0, "f", { 307, 3317 } }, { 13756, 50.0, "f", { 307, 3317 } } },
+  [1434] = { { 21150, 100.0, "c", 0 }, { 6358, 94.4, "f", 0 }, { 6359, 94.4, "f", 0 }, { 13422, 94.4, "f", 0 }, { 21153, 94.4, "f", 0 }, { 6362, 55.2, "f", { 35, 43, 104, 117, 122, 302, 311, 1577, 1739, 3357 } }, { 13755, 50.0, "f", { 297 } }, { 13756, 50.0, "f", { 297 } }, { 4603, 20.0, "f", { 35, 43, 104, 117, 122, 302, 311, 1577, 1739, 3357 } }, { 6355, 0.4, "c", { 35, 43, 104, 117, 122, 302, 311, 1577, 1739, 3357 } }, { 6357, 0.4, "c", { 35, 43, 104, 117, 122, 302, 311, 1577, 1739, 3357 } } },
+  [1435] = { { 21150, 100.0, "c", 0 }, { 21228, 100.0, "c", 0 }, { 6362, 55.2, "f", { 1797, 2403 } }, { 4603, 20.0, "f", { 1797, 2403 } }, { 6358, 12.0, "f", { 1797, 2403 } }, { 6359, 12.0, "f", { 1797, 2403 } }, { 6355, 0.4, "c", { 1797, 2403 } }, { 6357, 0.4, "c", { 1797, 2403 } } },
+  [1436] = { { 21150, 100.0, "c", 0 }, { 6361, 50.0, "f", { 2, 115 } }, { 6303, 33.5, "f", { 2, 115 } }, { 6358, 15.0, "f", { 2, 115 } }, { 6307, 0.5, "c", { 2, 115 } }, { 6351, 0.5, "c", { 2, 115 } }, { 6353, 0.5, "c", { 2, 115 } } },
+  [1437] = { { 21150, 100.0, "c", 0 }, { 6361, 58.8, "f", { 150, 298, 299, 1039, 2104 } }, { 6358, 25.0, "f", { 150, 298, 299, 1039, 2104 } }, { 6359, 15.0, "f", { 150, 298, 299, 1039, 2104 } }, { 6307, 0.4, "c", { 150, 298, 299, 1039, 2104 } }, { 6352, 0.4, "c", { 150, 298, 299, 1039, 2104 } }, { 6354, 0.4, "c", { 150, 298, 299, 1039, 2104 } } },
+  [1438] = { { 6356, 2.0, "c", { 702 } } },
+  [1439] = { { 21150, 100.0, "c", 0 }, { 6289, 35.6, "f", { 443, 445, 448, 454, 456, 2077 } }, { 6291, 18.3, "f", { 443, 445, 448, 454, 456, 2077 } }, { 6308, 15.3, "f", { 443, 445, 448, 454, 456, 2077 } }, { 6645, 0.3, "c", { 443, 445, 448, 454, 456, 2077 } } },
+  [1440] = { { 21113, 100.0, "c", 0 }, { 21150, 100.0, "c", 0 }, { 21071, 94.4, "f", 0 }, { 6361, 58.8, "f", { 414 } }, { 6358, 25.0, "f", { 414 } }, { 6359, 15.0, "f", { 414 } }, { 6307, 0.4, "c", { 414 } }, { 6352, 0.4, "c", { 414 } }, { 6354, 0.4, "c", { 414 } } },
+  [1442] = { { 6458, 14.6, "f", { 463, 636 } }, { 6291, 10.2, "f", { 463, 636 } }, { 6645, 0.4, "c", { 463, 636 } } },
+  [1443] = { { 21150, 100.0, "c", 0 }, { 6362, 55.2, "f", { 2324, 2405, 2406, 2408 } }, { 4603, 20.0, "f", { 2324, 2405, 2406, 2408 } }, { 6358, 12.0, "f", { 2324, 2405, 2406, 2408 } }, { 6359, 12.0, "f", { 2324, 2405, 2406, 2408 } }, { 6355, 0.4, "c", { 2324, 2405, 2406, 2408 } }, { 6357, 0.4, "c", { 2324, 2405, 2406, 2408 } } },
+  [1444] = { { 21150, 100.0, "c", 0 }, { 13755, 50.0, "f", { 1108, 1116, 1117, 1120, 1121 } }, { 13756, 50.0, "f", { 1108, 1116, 1117, 1120, 1121 } }, { 13889, 30.8, "f", { 1112 } }, { 13890, 17.2, "f", { 1112 } }, { 13891, 0.4, "c", { 1112 } } },
+  [1445] = { { 21150, 100.0, "c", 0 }, { 6362, 55.2, "f", { 513, 516, 517, 518, 2079 } }, { 4603, 20.0, "f", { 513, 516, 517, 518, 2079 } }, { 6358, 12.0, "f", { 513, 516, 517, 518, 2079 } }, { 6359, 12.0, "f", { 513, 516, 517, 518, 2079 } }, { 6355, 0.4, "c", { 513, 516, 517, 518, 2079 } }, { 6357, 0.4, "c", { 513, 516, 517, 518, 2079 } } },
+  [1446] = { { 21150, 100.0, "c", 0 }, { 21228, 100.0, "c", 0 } },
+  [1447] = { { 21150, 100.0, "c", 0 }, { 13888, 33.5, "f", { 1222, 1227, 3140 } }, { 4603, 25.5, "f", { 1226, 1222, 1227, 1228, 1229, 1230, 1231, 1256, 3140 } }, { 13422, 15.1, "f", { 1222, 1226, 1227, 1228, 1229, 1230, 1231, 1256, 3140 } }, { 13754, 15.1, "f", { 1226, 1228, 1229, 1230, 1231, 1256 } }, { 6359, 10.1, "f", { 1226, 1228, 1229, 1230, 1231, 1256 } }, { 6362, 10.1, "f", { 1226, 1228, 1229, 1230, 1231, 1256 } }, { 7973, 8.4, "c", { 1222, 1226, 1227, 1228, 1229, 1230, 1231, 1256, 3140 } }, { 13893, 4.2, "f", { 1222, 1227, 3140 } }, { 13874, 0.5, "c", { 1222, 1226, 1227, 1228, 1229, 1230, 1231, 1256, 3140 } }, { 13875, 0.5, "c", { 1226, 1228, 1229, 1230, 1231, 1256 } }, { 13918, 0.3, "c", { 1222, 1227, 3140 } } },
+}
+-- English names of the parts, used when the game does not name the area (C_Map.GetAreaInfo)
+ns.SPOT_AREA_NAMES = { [2] = "Longshore", [35] = "Booty Bay", [43] = "Wild Shore", [104] = "The Vile Reef", [115] = "Westfall Lighthouse", [117] = "Grom'gol Base Camp", [122] = "Zuuldaia Ruins", [150] = "Menethil Harbor", [168] = "The North Coast", [169] = "Whispering Shore", [226] = "The Skittering Dark", [271] = "Southshore", [294] = "Eastern Strand", [295] = "Western Strand", [297] = "Jaguero Isle", [298] = "Baradin Bay", [299] = "Menethil Bay", [302] = "The Crystal Shore", [305] = "North Tide's Run", [306] = "South Tide's Run", [307] = "The Overlook Cliffs", [311] = "Ruins of Aboraz", [327] = "Faldir's Cove", [328] = "The Drowned Reef", [367] = "Sen'jin Village", [382] = "The Sludge Fen", [384] = "Dreadmist Peak", [386] = "The Forgotten Pools", [387] = "Lushwater Oasis", [388] = "The Stagnant Oasis", [414] = "The Zoram Strand", [443] = "Ruins of Mathystra", [445] = "Cliffspring Falls", [448] = "Grove of the Ancients", [454] = "Wildbend River", [456] = "Cliffspring River", [463] = "Cragpool Lake", [513] = "Theramore Isle", [516] = "Dustwallow Bay", [517] = "Tidefury Cove", [518] = "Dreadmurk Shore", [636] = "Blackwolf River", [702] = "Rut'theran Village", [814] = "Southfury River", [815] = "Southfury River", [1039] = "The Lost Fleet", [1108] = "The Forgotten Coast", [1112] = "Jademir Lake", [1116] = "Feathermoon Stronghold", [1117] = "Ruins of Solarsal", [1120] = "Sardor Isle", [1121] = "Isle of Dread", [1156] = "Southern Barrens", [1222] = "Hetaera's Clutch", [1226] = "Temple of Arkkoran", [1227] = "Bay of Storms", [1228] = "The Shattered Strand", [1229] = "Tower of Eldara", [1230] = "Jagged Reef", [1231] = "Southridge Beach", [1256] = "The Ruined Reaches", [1577] = "The Cape of Stranglethorn", [1701] = "Blackthorn Ridge", [1739] = "Bloodsail Compound", [1797] = "Stagalbog", [2077] = "Twilight Vale", [2079] = "Alcaz Island", [2104] = "Deepwater Tavern", [2324] = "The Veiled Sea", [2398] = "The Great Sea", [2403] = "The Forbidding Sea", [2405] = "Ethel Rethor", [2406] = "Ranazjar Isle", [2408] = "Shadowprey Village", [2979] = "Tor'kren Farm", [3140] = "Scalebeard's Cave", [3317] = "Revantusk Village", [3357] = "Yojamba Isle" }
 -- Recorded catches not used (too few catches, or one reporter only; build_fish.py RECORDED):
---   [1432] only 4 catches (own 4, 20 needed): 3820 x4 (not in CMaNGOS) of 4
 --   [1436] only 14 catches (own 14, 20 needed): 6308 x8, 6289 x4, 6358 x2 (not in CMaNGOS) of 14
 --   [1437] only 11 catches (own 11, 20 needed): 6361 x5 (not in CMaNGOS), 6358 x4 (not in CMaNGOS), 6359 x2 (not in CMaNGOS) of 11
 --   [1453] only 9 catches (own 9, 20 needed): 6289 x6, 6291 x1, 6308 x1, 6361 x1 (not in CMaNGOS) of 9

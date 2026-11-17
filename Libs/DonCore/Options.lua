@@ -1,4 +1,4 @@
-local O = LibStub("DonCore-1.0"):NewModule("Options", 6)
+local O = LibStub("DonCore-1.0"):NewModule("Options", 7)
 
 ---------------------------------------------------------------------------
 -- DonCore module "Options" (minor 1, 01.11.2026, STYLEKIT_PLAN.md "Schritt 3"): one options window for every Don addon
@@ -338,6 +338,9 @@ function O.FromSettings(spec, ns)
     end,
     T = L, labels = function(s) return L(s) end,
     status = spec.status, help = spec.help, fromSettings = true,
+    -- (minor 7, 16.11.2026, Finddon and Geardon) addons that register through Settings send their cog to the game's
+    -- settings as well (spec.redirect, see O.Open)
+    redirect = spec.redirect,
   })
 end
 

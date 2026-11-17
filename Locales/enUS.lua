@@ -5,3 +5,4 @@ ns.L = setmetatable({}, { __index = function(_, k) return k end })
 ns.L["Rare (catches)"] = "Rare"
 ns.L["Rare (badge)"] = "Rare"
 ns.L["Fish (kind)"] = "Fish"
+ns.L["school (fishing)"] = "school" -- (17.11.2026) fish only at a school (pool)
