@@ -1,5 +1,9 @@
 # Changes
 
+## 1.7.3
+
+- **Data of 21 November:** fishing data refreshed with the catches of more players.
+
 ## 1.7.2
 
 - **One option for the window style:** the switch "Windows in the game's look" is now the choice "Window style" with "Don look" and "Blizzard look", named the same in every Don addon. Your setting stays as it was.
