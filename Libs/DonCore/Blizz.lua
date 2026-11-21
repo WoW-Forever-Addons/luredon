@@ -1,4 +1,4 @@
-local Bz = LibStub("DonCore-1.0"):NewModule("Blizz", 5)
+local Bz = LibStub("DonCore-1.0"):NewModule("Blizz", 11)
 if not Bz then return end
 
 ---------------------------------------------------------------------------
@@ -35,11 +35,17 @@ if not Bz then return end
 -- hidden), Button.blizz.
 ---------------------------------------------------------------------------
 local Kit = LibStub("DonCore-1.0"):Get("Kit", 25)
+-- (minor 11, 21.11.2026, Profitdon: gear "of the ..." without its stats) item rows show item.itemLink / item.itemKey,
+-- the variant itself (Kit.SetItemTip, Kit 33); an older Kit: the plain item ID as before
+local function SetItem(tt, it)
+  if Kit and Kit.SetItemTip then return Kit.SetItemTip(tt, it.itemID, it.itemLink, it.itemKey) end
+  return tt.SetItemByID and pcall(tt.SetItemByID, tt, it.itemID)
+end
 local K = setmetatable({}, { __index = Kit or {} })
 Bz.kit = K
 Bz.K = K -- (Profitdon's name for the kit)
 K.blizzLook = true -- a caller can tell the two kits apart
-Bz.VERSION = 5
+Bz.VERSION = 11
 Bz.ROW_H = 24 -- the row height of Bz.List without opts.rowHeight (Profitdon's craft and sell lists)
 if Bz.light == nil then Bz.light = true end
 
@@ -484,9 +490,24 @@ function K.SearchBox(parent, opts)
 end
 
 -- a number or text box of the game (InputBoxTemplate) with the kit's calls: SetValue, GetValue, Layout, _focus
+-- (minor 9, Daniel 20.11.2026: "mit Enter oder mit der Tab-Taste bestätigen ... wenn ich mit einem Linksklick irgendwo
+-- auf dem Bildschirm das quasi auch erneuert wird") a click anywhere outside a Don edit box takes its focus: the box's
+-- focus-lost handler commits what was typed, as Enter does. One watcher for all Don addons (frame DonCoreFocusWatch);
+-- only boxes marked _donFocusOut are touched, never the chat or other addons' boxes.
+local function WatchFocusOut(e)
+  e._donFocusOut = true
+  if _G.DonCoreFocusWatch or not CreateFrame then return end
+  local w = CreateFrame("Frame", "DonCoreFocusWatch", UIParent)
+  if not pcall(w.RegisterEvent, w, "GLOBAL_MOUSE_DOWN") then return end
+  w:SetScript("OnEvent", function()
+    local f = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
+    if f and f._donFocusOut and f.ClearFocus and not (f.IsMouseOver and f:IsMouseOver()) then f:ClearFocus() end
+  end)
+end
 function K.EditBox(parent, opts)
   opts = opts or {}
   local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+  WatchFocusOut(e)
   e:SetSize(opts.width or 60, 20)
   e:SetAutoFocus(false)
   if opts.numeric then e:SetNumeric(true) e:SetJustifyH("CENTER") e:SetMaxLetters(opts.maxLetters or 7)
@@ -496,8 +517,32 @@ function K.EditBox(parent, opts)
   e.hint:SetPoint("LEFT", 2, 0)
   if e.hint.SetWordWrap then e.hint:SetWordWrap(false) end
   e.hint:SetText(opts.placeholder or "")
+  -- (minor 10) opts.clear as in the Kit: a small x at the right while there is text; opts.onClear after it emptied the box
+  if opts.clear then
+    e.clear = CreateFrame("Button", nil, e)
+    e.clear:SetSize(14, 14)
+    e.clear:SetPoint("RIGHT", -3, 0)
+    local t = e.clear:CreateTexture(nil, "ARTWORK")
+    t:SetAllPoints()
+    t:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    t:SetAlpha(0.6)
+    e.clear.tex = t
+    e.clear:SetScript("OnEnter", function(self) self.tex:SetAlpha(1) end)
+    e.clear:SetScript("OnLeave", function(self) self.tex:SetAlpha(0.6) end)
+    e.clear:Hide()
+    if e.SetTextInsets then e:SetTextInsets(0, 18, 0, 0) end
+  end
   local function Hint(self)
     if (self:GetText() or "") == "" and (opts.placeholder or "") ~= "" and not self._focus then self.hint:Show() else self.hint:Hide() end
+    if self.clear then if (self:GetText() or "") == "" then self.clear:Hide() else self.clear:Show() end end
+  end
+  if e.clear then
+    e.clear:SetScript("OnClick", function()
+      e:SetValue(nil)
+      e:ClearFocus()
+      if opts.onChange then Try(opts.onChange, "", e) end
+      if opts.onClear then Try(opts.onClear, e) end
+    end)
   end
   function e:SetValue(v)
     self._setting = true
@@ -731,7 +776,7 @@ local function RowTip(r)
   if not (tt and tt.SetOwner) then return end
   tt:SetOwner(r, "ANCHOR_RIGHT")
   Bz.NoCompare(tt)
-  if it.itemID and tt.SetItemByID then Call(tt.SetItemByID, tt, it.itemID) else tt:SetText(tostring(it.title or ""), 1, 0.82, 0) end
+  if not (it.itemID and SetItem(tt, it)) then tt:SetText(tostring(it.title or ""), 1, 0.82, 0) end
   for _, l in ipairs(type(it.tipLines) == "table" and it.tipLines or {}) do
     if type(l) == "table" and l[2] ~= nil then tt:AddDoubleLine(tostring(l[1] or ""), tostring(l[2]), 0.7, 0.7, 0.7, 1, 1, 1)
     elseif type(l) == "table" then local cr, cg, cb = RGB(l.color) tt:AddLine(tostring(l[1] or ""), cr, cg, cb, true)
@@ -978,7 +1023,17 @@ function K.Table(parent, opts)
     b.arrow:SetTexture("Interface\\Buttons\\UI-SortArrow")
     b.arrow:SetVertexColor(1, 0.82, 0)
     b.arrow:SetPoint("LEFT", b.text, "RIGHT", 3, 0)
-    b:SetScript("OnClick", function(self) if self.col and self.col.sort and opts.onSort then Try(opts.onSort, self.col.key, t) end end)
+    -- (minor 8, Kit 30: Kit.HeadDrag) opts.onMove(fromKey, toKey, t): a head dragged onto another moves its column; a right
+    -- click calls onMove(nil, nil, t), the list's own order back. The click that ends a drag does not sort.
+    if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
+    b:SetScript("OnClick", function(self, button)
+      if Kit.HeadDragged and Kit.HeadDragged(self) then return end
+      if button == "RightButton" then if opts.onMove then Try(opts.onMove, nil, nil, t) end return end
+      if self.col and self.col.sort and opts.onSort then Try(opts.onSort, self.col.key, t) end
+    end)
+    if opts.onMove and Kit.HeadDrag then
+      Kit.HeadDrag(b, t.head, function() return t.columns[1] end, function(a, c) Try(opts.onMove, a, c, t) end)
+    end
     t.head.btns[i] = b
     return b
   end
@@ -1474,7 +1529,7 @@ local function ShowTipOf(owner, it, tipFn)
   if type(it) == "table" and it.itemID and GameTooltip and GameTooltip.SetItemByID then
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     Bz.NoCompare(GameTooltip)
-    Call(GameTooltip.SetItemByID, GameTooltip, it.itemID)
+    SetItem(GameTooltip, it)
     for _, l in ipairs(type(it.tipLines) == "table" and it.tipLines or {}) do
       if type(l) == "table" and l[2] ~= nil then GameTooltip:AddDoubleLine(tostring(l[1] or ""), tostring(l[2]), 0.7, 0.7, 0.7, 1, 1, 1)
       elseif l then GameTooltip:AddLine(tostring(type(l) == "table" and l[1] or l), 1, 1, 1, true) end
@@ -1722,6 +1777,7 @@ PART.row = {
 }
 
 -- kind "group": the game's plus or minus button, gold text, a number on the right
+-- (minor 7) it.indent: pixels the button and the text move right (a sub group, Profitdon writs: zones under continents)
 PART.group = {
   build = function(p)
     p.band = p:CreateTexture(nil, "BACKGROUND")
@@ -1736,6 +1792,9 @@ PART.group = {
     p.count:SetPoint("RIGHT", -12, 0)
   end,
   fill = function(p, it, w)
+    local ind = tonumber(it.indent) or 0
+    p.arrow:ClearAllPoints()
+    p.arrow:SetPoint("LEFT", 8 + ind, 0)
     if it.static then p.arrow:Hide()
     else
       p.arrow:SetTexture(it.collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
@@ -1744,14 +1803,14 @@ PART.group = {
     p.text:SetText(it.text or "")
     p.text:SetTextColor(Col3(it.color, GOLD))
     p.text:ClearAllPoints()
-    p.text:SetPoint("LEFT", it.static and 12 or 28, 0)
+    p.text:SetPoint("LEFT", (it.static and 12 or 28) + ind, 0)
     -- the Kit writes right and count side by side; a caller that gives the same number twice gets it once
     local right = it.right ~= nil and tostring(it.right) or ""
     if it.count ~= nil and tostring(it.count) ~= right then right = right .. (right ~= "" and "  " or "") .. tostring(it.count) end
     -- (minor 4) the right text takes the room it needs ("Zones: 23"), the title the rest
     p.count:SetText(right)
     local cw = right ~= "" and math.max(24, math.min(math.floor(w * 0.45), Width(p.count) + 4)) or 0
-    p.text:SetWidth(math.max(20, w - (it.static and 12 or 28) - cw - 20))
+    p.text:SetWidth(math.max(20, w - (it.static and 12 or 28) - ind - cw - 20))
   end,
 }
 
@@ -3042,6 +3101,10 @@ function K.ItemGrid(parent, opts)
       b:SetUnusable(en.unusable)
       b.reason = type(en.unusable) == "string" and en.unusable or nil
       b.tipFallback = en.tipFallback
+      -- (minor 6, as Kit 27) faded, picked (the game's square highlight kept on), grey lines under the tooltip
+      b.extraTip = en.tipLines
+      if b.SetAlpha then b:SetAlpha(en.dim and 0.45 or 1) end
+      if b.LockHighlight then if en.selected then b:LockHighlight() else b:UnlockHighlight() end end
       b:Show()
     end
     for i = #self.entries + 1, #self.icons do self.icons[i]:Hide() self.icons[i].entry = nil end
@@ -3235,7 +3298,18 @@ function K.Card(parent)
   c.blizz = true
   c.top:Hide()
   BoxSkin(c)
-  BlizzFonts(c, { title = "GameFontNormalLarge", sub = "GameFontHighlightSmall", status = "GameFontHighlightSmall" })
+  -- (17.11.2026, Daniel's picture of Questdon's dungeon cards: "RUINS OF LORDAE...") the game writes a card's title as it
+  -- is, not in capitals, and in its normal size: the long names fit
+  BlizzFonts(c, { title = "GameFontNormal", sub = "GameFontHighlightSmall", status = "GameFontHighlightSmall" })
+  local setData = c.SetData
+  function c:SetData(d, ...)
+    local r = setData(self, d, ...)
+    if type(d) == "table" and d.title then
+      self.title:SetText(tostring(d.title))
+      if self.Layout then self:Layout(self._w or tonumber(self.GetWidth and self:GetWidth()) or 0) end
+    end
+    return r
+  end
   BlizzFonts(c.ring, { text = "GameFontHighlightSmall" })
   if c.art and c.art.bd then c.art.bd:SetColor(EDGE) end
   Regions(c.art, function(t) if t ~= c.art.icon then t:SetVertexColor(0, 0, 0, 0.5) end end)

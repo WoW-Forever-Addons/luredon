@@ -1,4 +1,4 @@
-local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 26)
+local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 33)
 
 ---------------------------------------------------------------------------
 -- DonCore module "Kit" (minor 1, 01.11.2026, STYLEKIT_PLAN.md "Schritt 2"; minor 2, 02.11.2026: Kit.IconButton, the symbols from
@@ -82,7 +82,7 @@ local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 26)
 ---------------------------------------------------------------------------
 if not Kit then return end -- the same or a newer Kit is loaded already
 local Core = LibStub("DonCore-1.0")
-Kit.VERSION = 26
+Kit.VERSION = 33
 
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 local floor, ceil, max, min, abs, pi, sin, cos = math.floor, math.ceil, math.max, math.min, math.abs, math.pi, math.sin, math.cos
@@ -165,10 +165,33 @@ Kit.UpdateQuestColors()
 
 -- Blizzard's rule (GetQuestDifficultyColor): 5+ above red, 3+ orange, from 2 below yellow, within the green range green,
 -- else grey. playerLevel: default the player's level.
+-- (Kit 28, 18.11.2026, player's picture: Blizzard's list green, ours grey at the same [35]) for the player's own level
+-- the game's GetQuestDifficultyColor decides, so the colour is always Blizzard's; the own rule below only without it or
+-- for another level (a zone's middle).
+local function GameDifficulty(level)
+  if type(GetQuestDifficultyColor) ~= "function" then return nil end
+  local ok, c = pcall(GetQuestDifficultyColor, level)
+  if not ok or type(c) ~= "table" then return nil end
+  local game = type(QuestDifficultyColors) == "table" and QuestDifficultyColors or nil
+  if game then
+    for _, k in ipairs(Kit.QUEST_KEYS) do if game[k] == c then return k end end
+    for _, k in ipairs(Kit.QUEST_KEYS) do
+      local g = game[k]
+      if type(g) == "table" and g.r == c.r and g.g == c.g and g.b == c.b then return k end
+    end
+  end
+  return nil
+end
+
 function Kit.QuestDifficulty(level, playerLevel)
   level = tonumber(level)
   if not level then return "trivial" end
-  playerLevel = tonumber(playerLevel) or (type(UnitLevel) == "function" and tonumber(UnitLevel("player"))) or 1
+  local own = type(UnitLevel) == "function" and tonumber(UnitLevel("player")) or nil
+  if not tonumber(playerLevel) or tonumber(playerLevel) == own then
+    local k = GameDifficulty(level)
+    if k then return k end
+  end
+  playerLevel = tonumber(playerLevel) or own or 1
   local d = level - playerLevel
   if d >= 5 then return "impossible" elseif d >= 3 then return "verydifficult" elseif d >= -2 then return "difficult" end
   local range
@@ -1614,6 +1637,7 @@ end
 -- item.static = no folding (a section title)
 -- (minor 3) item.color (the title in a status colour, e.g. "green"), item.right (a short text before the count, e.g. "show"),
 -- item.tooltipFn(row); item.plainCase keeps the case of the text (dates, names)
+-- (minor 29, Profitdon writs: continents over zones) item.indent: pixels the arrow and the text move right (a sub group)
 function Kit.GroupHeader(parent)
   local r = RowBase(parent, S.sub, C.group)
   r.mark:Hide()
@@ -1626,6 +1650,8 @@ function Kit.GroupHeader(parent)
   function r:SetItem(it)
     self.item = it
     self.arrow:SetText(it.static and "" or it.collapsed and "+" or "-")
+    self.arrow:ClearAllPoints()
+    self.arrow:SetPoint("LEFT", S.pad - 2 + (tonumber(it.indent) or 0), 0)
     local t = tostring(it.text or "")
     self.text:SetText(it.plainCase and t or Upper(t))
     TextColor(self.text, it.color or C.txGold)
@@ -1638,7 +1664,7 @@ function Kit.GroupHeader(parent)
   end
   function r:Layout(w)
     self._w = w
-    local x = self.item and self.item.static and S.pad or S.pad + 14
+    local x = (self.item and self.item.static and S.pad or S.pad + 14) + (self.item and tonumber(self.item.indent) or 0)
     self.text:ClearAllPoints()
     self.text:SetPoint("LEFT", x, 0)
     Kit.Fit(self.count, max(60, floor(w * 0.45)))
@@ -3229,6 +3255,8 @@ end
 -- (minor 10) ItemGrid: item symbols (Kit.ItemIcon) in rows, as many per row as the width takes; nothing scrolls, the
 -- caller gives the room. opts.size (default 28), opts.gap (4), opts.onClick(icon, button, entry).
 -- g:SetItems({ { itemID, quality, count, unusable (true or a reason text), tipFallback (minor 19) }, ... }) or plain item ids,
+-- (minor 27, Profitdon's Verkaufen-Seite 17.11.2026) entry.dim (the symbol faded), entry.selected (gold edge),
+-- entry.tipLines (grey lines under the item tooltip),
 -- g:Layout(w) returns the height (0 without items), g.icons
 ---------------------------------------------------------------------------
 function Kit.ItemGrid(parent, opts)
@@ -3251,6 +3279,9 @@ function Kit.ItemGrid(parent, opts)
       b:SetUnusable(en.unusable)
       b.reason = type(en.unusable) == "string" and en.unusable or nil
       b.tipFallback = en.tipFallback -- (minor 19)
+      b.extraTip = en.tipLines -- (minor 27)
+      Call(b, "SetAlpha", en.dim and 0.45 or 1)
+      if en.selected then b.bd:SetColor(C.goldBright) end
       b:Show()
     end
     for i = #self.entries + 1, #self.icons do self.icons[i]:Hide() self.icons[i].entry = nil end
@@ -3279,9 +3310,24 @@ end
 -- when it loses the focus, opts.clear (a small x),
 -- Tab goes to box.nextBox (box:SetNext(other)). e:GetValue() (a number when numeric), e:SetValue(v), e:Layout(w)
 ---------------------------------------------------------------------------
+-- (minor 31, Daniel 20.11.2026: "mit Enter oder mit der Tab-Taste bestätigen ... wenn ich mit einem Linksklick irgendwo
+-- auf dem Bildschirm das quasi auch erneuert wird") a click anywhere outside a Don edit box takes its focus: the box's
+-- focus-lost handler commits what was typed, as Enter does. One watcher for all Don addons (frame DonCoreFocusWatch);
+-- only boxes marked _donFocusOut are touched, never the chat or other addons' boxes.
+local function WatchFocusOut(e)
+  e._donFocusOut = true
+  if _G.DonCoreFocusWatch or not CreateFrame then return end
+  local w = CreateFrame("Frame", "DonCoreFocusWatch", UIParent)
+  if not pcall(w.RegisterEvent, w, "GLOBAL_MOUSE_DOWN") then return end
+  w:SetScript("OnEvent", function()
+    local f = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
+    if f and f._donFocusOut and f.ClearFocus and not (f.IsMouseOver and f:IsMouseOver()) then f:ClearFocus() end
+  end)
+end
 function Kit.EditBox(parent, opts)
   opts = opts or {}
   local e = CreateFrame("EditBox", nil, parent)
+  WatchFocusOut(e)
   e:SetHeight(S.button)
   Call(e, "SetAutoFocus", false)
   local fo = Kit.Font("row")
@@ -3310,7 +3356,8 @@ function Kit.EditBox(parent, opts)
     if self.clear then if t == "" then self.clear:Hide() else self.clear:Show() end end
     if user then Safe("edit", opts.onChange, t, self) end
   end
-  if e.clear then e.clear:SetScript("OnClick", function() e:SetText("") e:ClearFocus() Changed(e, true) end) end
+  -- (minor 32) opts.onClear: called after the x emptied the box
+  if e.clear then e.clear:SetScript("OnClick", function() e:SetText("") e:ClearFocus() Changed(e, true) if opts.onClear then Safe("edit", opts.onClear, e) end end) end
   function e:GetValue()
     local t = self:GetText() or ""
     if opts.numeric then
@@ -3648,6 +3695,7 @@ function Kit.ShowCopy(title, hint, text, words)
       self.edit:SetWidth(max(20, w - 16))
     end })
     d.hint = Text(d.body, "sub", C.muted)
+    Call(d.hint, "SetMaxLines", 0) -- (Kit 28, 18.11.2026, player: "sehe den link leider nirgends") Text() allows one line
     d.scroll = CreateFrame("ScrollFrame", nil, d.body)
     Fill(d.scroll, C.input)
     Border(d.scroll, C.mid)
@@ -3814,14 +3862,29 @@ end
 -- the game's item tooltip at owner (lines: more lines below, as Kit.Tooltip); false when the game has no such call
 -- (minor 19) at the mouse for a wide owner (Kit.TipAnchor); an unknown item is asked for and the tooltip built again
 -- fb: the stand-in while the game does not know the item (Kit.ItemFallbackTip)
-function Kit.ItemTooltip(owner, id, lines, hint, fb)
+-- (minor 33, Daniel 21.11.2026 on Profitdon: "überall fehlen die werte der ausrüstung wenn es of the ... ist") the game's
+-- tooltip of one variant: link (the piece itself, "of the Bear" with its stats), else key (an AH itemKey with itemSuffix),
+-- else the plain item ID (the base item without suffix stats). True when the tooltip took one.
+function Kit.SetItemTip(tt, id, link, key)
+  if not tt then return false end
+  if type(link) ~= "string" and type(id) == "string" then link = id end -- an item link given as the ID (Profitdon's sell grid)
+  if type(link) == "string" and link:find("item:", 1, true) and tt.SetHyperlink and pcall(tt.SetHyperlink, tt, link) then return true end
+  if type(key) == "table" and (tonumber(key.itemSuffix) or 0) ~= 0 and tt.SetItemKey
+    and pcall(tt.SetItemKey, tt, tonumber(key.itemID) or id, tonumber(key.itemLevel) or 0, tonumber(key.itemSuffix) or 0) then return true end
+  id = tonumber(id) or (type(key) == "table" and tonumber(key.itemID)) or nil
+  if not id then return false end
+  if tt.SetItemByID and pcall(tt.SetItemByID, tt, id) then return true end
+  return tt.SetHyperlink and pcall(tt.SetHyperlink, tt, "item:" .. tostring(id)) or false
+end
+
+-- (minor 33) link, key: the variant (Kit.SetItemTip); item rows pass item.itemLink and item.itemKey
+function Kit.ItemTooltip(owner, id, lines, hint, fb, link, key)
   local tt = GameTooltip
   if not (tt and owner and id) then return false end
   if not TipOwner(tt, owner) then return false end
-  local waits = Kit.ItemWait(owner, id, function() Kit.ItemTooltip(owner, id, lines, hint, fb) end)
+  local waits = Kit.ItemWait(owner, id, function() Kit.ItemTooltip(owner, id, lines, hint, fb, link, key) end)
   local ok = waits and Kit.ItemFallbackTip(tt, fb)
-  if not ok then ok = tt.SetItemByID and pcall(tt.SetItemByID, tt, id) end
-  if not ok then ok = tt.SetHyperlink and pcall(tt.SetHyperlink, tt, "item:" .. tostring(id)) end
+  if not ok then ok = Kit.SetItemTip(tt, id, link, key) end
   for _, l in ipairs(type(lines) == "table" and lines or {}) do
     if type(l) == "table" and l[2] ~= nil then
       local v = Col(l[3] or C.body)
@@ -3846,7 +3909,7 @@ function Kit.ItemTipFn(row)
     for _, l in ipairs(type(it.tipLines) == "table" and it.tipLines or {}) do lines[#lines + 1] = l end
     lines[#lines + 1] = { it.unusable, color = C.red }
   end
-  Kit.ItemTooltip(row, it.itemID, lines, it.tipHint, it.tipFallback)
+  Kit.ItemTooltip(row, it.itemID, lines, it.tipHint, it.tipFallback, it.itemLink, it.itemKey)
 end
 
 -- shift-click: the item's link into the open chat line (true when it did)
@@ -4075,8 +4138,98 @@ end
 KIND_H.trow, KIND_H.note = S.row, S.sub
 ROW_MAKER.trow, ROW_MAKER.note = Kit.ItemRow, Kit.NoteRow
 
+-- (minor 30, Daniel 18.11.2026, Profitdon: "dass man die Spalten mit einem Linksklick verschieben kann ... so anpassen
+-- kann, wie man das braucht") a column head held with the left button and dragged onto another head moves its column
+-- there: onMove(fromKey, toKey). The first column (the title) neither moves nor takes one. A right click on a head calls
+-- onMove(nil, nil): back to the list's own order. A plain left click still sorts; the click that ends a drag is dropped
+-- (Kit.HeadDragged). While dragging, the dragged head is dimmed and a gold bar marks where it lands.
+-- b: the head button (b.col its column), head: the frame of the heads (head.btns), first(): the title column.
+function Kit.HeadDrag(b, head, first, onMove)
+  if not (b and head and onMove) then return end
+  if b.RegisterForDrag then b:RegisterForDrag("LeftButton") end
+  local function Movable(x) return x and x.col and x:IsShown() and x.col ~= first() end
+  local function Target(self)
+    for _, o in ipairs(head.btns or {}) do
+      if o ~= self and Movable(o) and o:IsMouseOver() then return o end
+    end
+  end
+  local function Mark(self, o)
+    local m = head.dropMark
+    if not m then
+      m = head:CreateTexture(nil, "OVERLAY")
+      m:SetColorTexture(1, 0.82, 0, 0.9)
+      m:SetWidth(2)
+      head.dropMark = m
+    end
+    if not o then m:Hide() return end
+    m:ClearAllPoints()
+    -- the column lands left of the target when it comes from the right, else right of it
+    local left = (self:GetLeft() or 0) > (o:GetLeft() or 0)
+    m:SetPoint("TOP", o, left and "TOPLEFT" or "TOPRIGHT", 0, 0)
+    m:SetPoint("BOTTOM", o, left and "BOTTOMLEFT" or "BOTTOMRIGHT", 0, 0)
+    m:Show()
+  end
+  b:SetScript("OnDragStart", function(self)
+    if not Movable(self) then return end
+    self._dragging = true
+    self:SetAlpha(0.5)
+    self:SetScript("OnUpdate", function(me) Mark(me, Target(me)) end)
+  end)
+  b:SetScript("OnDragStop", function(self)
+    if not self._dragging then return end
+    self._dragging = nil
+    self:SetScript("OnUpdate", nil)
+    self:SetAlpha(1)
+    self._dragEnd = type(GetTime) == "function" and GetTime() or 0
+    local o = Target(self)
+    Mark(self, nil)
+    if o then Safe("table move", onMove, self.col.key, o.col.key) end
+  end)
+end
+-- true for the click that ends a drag (the game may send it after OnDragStop)
+function Kit.HeadDragged(b)
+  local t = type(GetTime) == "function" and GetTime() or 0
+  return b and b._dragEnd and t - b._dragEnd < 0.2 or false
+end
+-- the order of columns after a move: cols (the list's own, cols[1] the title), order (keys as saved, or nil), from/to
+-- keys. Returns the columns in the order to show and the new order of keys (nil from/to: only applies the order).
+-- Keys in order that the list lacks are left out, columns the order lacks keep their place after their neighbour.
+function Kit.ColumnOrder(cols, order, from, to)
+  if type(cols) ~= "table" or #cols < 2 then return cols, order end
+  local byKey, keys = {}, {}
+  for i = 2, #cols do byKey[cols[i].key] = cols[i] end
+  for _, k in ipairs(type(order) == "table" and order or {}) do
+    if byKey[k] then keys[#keys + 1] = k byKey[k] = false end
+  end
+  -- new columns (not in the saved order): after the column before them in the list's own order
+  for i = 2, #cols do
+    local k = cols[i].key
+    if byKey[k] then
+      local at = #keys + 1
+      local prev = i > 2 and cols[i - 1].key
+      for j, x in ipairs(keys) do if x == prev then at = j + 1 end end
+      if i == 2 then at = 1 end
+      table.insert(keys, at, k)
+      byKey[k] = false
+    end
+  end
+  if from and to and from ~= to then
+    local fi, ti
+    for j, x in ipairs(keys) do if x == from then fi = j end if x == to then ti = j end end
+    if fi and ti then
+      table.remove(keys, fi)
+      table.insert(keys, ti, from)
+    end
+  end
+  local all = {}
+  for i = 2, #cols do all[cols[i].key] = cols[i] end
+  local out = { cols[1] }
+  for _, k in ipairs(keys) do out[#out + 1] = all[k] end
+  return out, keys
+end
+
 -- the head of a table: titles over the columns, a click on a sortable one calls onSort(key)
-local function ItemTableHead(parent, onSort)
+local function ItemTableHead(parent, onSort, onMove)
   local h = CreateFrame("Frame", nil, parent)
   h:SetHeight(24)
   Fill(h, C.group)
@@ -4093,7 +4246,12 @@ local function ItemTableHead(parent, onSort)
     b.arrow:SetSize(9, 8)
     Call(b.arrow, "SetTexture", "Interface\\Buttons\\UI-SortArrow")
     b.arrow:Hide()
-    Clickable(b, function(self) if self.col and self.col.sort then Safe("table sort", onSort, self.col.key) end end)
+    Clickable(b, function(self, button)
+      if Kit.HeadDragged(self) then return end
+      if button == "RightButton" then if onMove then Safe("table move", onMove) end return end
+      if self.col and self.col.sort then Safe("table sort", onSort, self.col.key) end
+    end)
+    Kit.HeadDrag(b, h, function() return h.cols and h.cols[1] end, onMove)
     Stateful(b, function(self, st)
       local on = self.col and h.sortKey == self.col.key
       TextColor(self.text, (on or (st == "hover" and self.col and self.col.sort)) and C.txGold or (self.col and self.col.color) or C.muted)
@@ -4154,7 +4312,9 @@ end
 function Kit.Table(parent, opts)
   opts = opts or {}
   local t = CreateFrame("Frame", nil, parent)
-  t.head = ItemTableHead(t, function(key) Safe("table sort", opts.onSort, key, t) end)
+  -- (minor 30) opts.onMove(fromKey, toKey, t): a head dragged onto another; (nil, nil): a right click, the own order back
+  t.head = ItemTableHead(t, function(key) Safe("table sort", opts.onSort, key, t) end,
+    opts.onMove and function(a, b) Safe("table move", opts.onMove, a, b, t) end or nil)
   t.head:SetPoint("TOPLEFT", 0, 0)
   t.list = Kit.List(t, { kinds = opts.kinds, onClick = opts.onClick, onToggle = opts.onToggle, zebra = opts.zebra })
   t.list:SetPoint("TOPLEFT", 0, -24)

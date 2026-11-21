@@ -506,7 +506,5 @@ L["Show this again: Options, Casting and lures."] = "다시 보기: 설정, 던�
 L["Introduction"] = "소개"
 L["Shows the short introduction again: casting with the double right-click or the interact key, hooking with the interact key."] = "짧은 소개를 다시 보여줍니다: 오른쪽 더블 클릭이나 상호작용 키로 던지기, 상호작용 키로 낚아채기."
 -- (15.11.2026) Blizzard look of the fishing book
-L["Windows in the game's look"] = "게임 스타일의 창"
-L["Luredon's windows look like the game's own: the fishing book and the dialogs with the game's frame, tabs, buttons and lists, the small window on the game's tooltip ground. The options then open in the game's settings (Options > AddOns > Luredon) after a /reload."] = "Luredon의 창이 게임 자체의 창처럼 보입니다: 낚시 책과 대화 상자는 게임의 테두리, 탭, 버튼, 목록으로, 작은 창은 게임 툴팁 배경 위에 표시됩니다. 설정은 /reload 후 게임 설정(설정 > 애드온 > Luredon)에서 열립니다."
 L["The fishing book could not be built in the game's look, it opens in the Don look. /ld diag says why."] = "낚시 책을 게임 스타일로 만들 수 없어 Don 스타일로 엽니다. /ld diag에서 이유를 볼 수 있습니다."
 L["Zones: %d"] = "지역: %d"

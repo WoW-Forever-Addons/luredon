@@ -507,7 +507,5 @@ L["Show this again: Options, Casting and lures."] = "再次顯示：選項，拋
 L["Introduction"] = "介紹"
 L["Shows the short introduction again: casting with the double right-click or the interact key, hooking with the interact key."] = "再次顯示簡短介紹：右鍵雙擊或互動鍵拋竿，互動鍵收竿。"
 -- (15.11.2026) Blizzard look of the fishing book
-L["Windows in the game's look"] = "遊戲風格的視窗"
-L["Luredon's windows look like the game's own: the fishing book and the dialogs with the game's frame, tabs, buttons and lists, the small window on the game's tooltip ground. The options then open in the game's settings (Options > AddOns > Luredon) after a /reload."] = "Luredon 的視窗看起來就像遊戲本身的視窗：釣魚手冊和對話框使用遊戲的外框、分頁、按鈕和清單，小視窗則顯示在遊戲提示框的底色上。/reload 之後，選項會在遊戲的設定中開啟（選項 > 插件 > Luredon）。"
 L["The fishing book could not be built in the game's look, it opens in the Don look. /ld diag says why."] = "無法以遊戲風格建立釣魚手冊，改以 Don 風格開啟。/ld diag 會說明原因。"
 L["Zones: %d"] = "區域：%d"

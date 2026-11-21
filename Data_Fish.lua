@@ -99,4 +99,4 @@ ns.SPOT_AREA_NAMES = { [2] = "Longshore", [35] = "Booty Bay", [43] = "Wild Shore
 -- Recorded catches not used (too few catches, or one reporter only; build_fish.py RECORDED):
 --   [1436] only 14 catches (own 14, 20 needed): 6308 x8, 6289 x4, 6358 x2 (not in CMaNGOS) of 14
 --   [1437] only 11 catches (own 11, 20 needed): 6361 x5 (not in CMaNGOS), 6358 x4 (not in CMaNGOS), 6359 x2 (not in CMaNGOS) of 11
---   [1453] only 9 catches (own 9, 20 needed): 6289 x6, 6291 x1, 6308 x1, 6361 x1 (not in CMaNGOS) of 9
+--   [1453] caught once only, not in CMaNGOS: 6361 x1

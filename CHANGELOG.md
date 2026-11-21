@@ -1,5 +1,11 @@
 # Changes
 
+## 1.7.2
+
+- **One option for the window style:** the switch "Windows in the game's look" is now the choice "Window style" with "Don look" and "Blizzard look", named the same in every Don addon. Your setting stays as it was.
+- **Fish data:** small additions from play.
+- **Shared Don library:** updated to the current version of the Don addons.
+
 ## 1.7.1
 - **Fish from schools in the fish atlas:** Raw Sagefish, Raw Greater Sagefish, Deviate Fish and the trunks from floating wreckage are listed with the zones where their schools swim, marked "school". Thanks for the report!
 - **Fish of single spots in a zone:** fish that bite only in part of a zone (Oil Covered Fish in The Sludge Fen, Darkclaw Lobster in Azshara, the sea fish of coasts) are listed with that place.

@@ -108,10 +108,12 @@ local PAGES = {
     { key = "combatFade", name = "Dim in combat", tip = "Dims the whole window to 40 % while you are in combat.", onChange = ApplyPanel },
     -- (15.11.2026, Daniel: "Das Blizzard layout von profitdon ... optional über alle addons ausrollen"; CurseForge wish
     -- OGAmadeuz 15.11.: "a more Blizzard styled theme") the fishing book from the game's own templates (DonCore Blizz)
-    { key = "blizzLook", name = "Windows in the game's look", tip = "Luredon's windows look like the game's own: the fishing book and the dialogs with the game's frame, tabs, buttons and lists, the small window on the game's tooltip ground. The options then open in the game's settings (Options > AddOns > Luredon) after a /reload.", onChange = function()
+    -- (20.11.2026, Daniel: the same name in every Don addon) the choice "Window style" with "Don look" / "Blizzard look":
+    -- DonCore's item in the game's language (Libs\DonCore\Settings.lua, ns.LookOption), still the value db.blizzLook
+    ns.LookOption({ addon = "Luredon", onChange = function()
       if ns.BookReset then ns.BookReset() end
       if ns.ApplyPanelLook then ns.ApplyPanelLook() end
-    end },
+    end }),
     -- (04.11.2026, Era-Test) the minimap button's switch, DonCore's item in the game's language (MinimapButton.lua)
     ns.MinimapOption(),
     -- 1.15: same place as in the other addons (DESIGN.md); the start page keeps its tool.
@@ -275,7 +277,9 @@ local function RegisterWindow()
     default = function(key) return ns.defaults and ns.defaults[key] end,
     changed = ns.Safe("option window", function(key)
       local item = ITEMS[key]
-      if item and item.onChange then item.onChange(ns.db[key]) end
+      -- (20.11.2026) DonCore's own items (donCommon: window style, minimap button) get their onChange from the window
+      -- itself right after this call (Libs\DonCore\Options.lua, Changed): not a second time here
+      if item and item.onChange and not item.donCommon then item.onChange(ns.db[key]) end
       if ns.RefreshSettingsUI then ns.RefreshSettingsUI() end
     end),
     T = function(s) return L[s] end,
