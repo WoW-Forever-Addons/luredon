@@ -87,18 +87,88 @@ local function MoveOldKey(old, key)
   Move(type(db.book) == "table" and db.book.chars)
   if type(db.lastSession) == "table" and db.lastSession.char == old then db.lastSession.char = key end
 end
+-- (24.11.2026, Fenstercheck, Daniel: "keine Sitzung", his sessions were there) the Forever client gave "" as the realm
+-- for a whole evening: the key became "Mairi Wipeborn-" and the book, the skill and the session looked into an empty
+-- table. "" counts as unreadable now; the realm then comes from GetNormalizedRealmName (without spaces), written the
+-- way an existing key of this character writes it, and what was saved under "Name-" or "Name-?" joins the real key.
+local function Text(fn)
+  if type(fn) ~= "function" then return nil end
+  local ok, v = pcall(fn)
+  if ok and ns.Usable(v) and type(v) == "string" and v ~= "" then return v end
+end
+local function Squeeze(s) return (s:gsub("[%s%-]", "")) end
+local function KnownRealm(name, norm)
+  local db = ns.db
+  if type(db) ~= "table" then return nil end
+  local prefix, only, count = name .. "-", nil, 0
+  for _, t in ipairs({ db.skills or false, type(db.book) == "table" and db.book.chars or false }) do
+    if type(t) == "table" then
+      for k in pairs(t) do
+        if type(k) == "string" and k:sub(1, #prefix) == prefix then
+          local r = k:sub(#prefix + 1)
+          if r ~= "" and r ~= "?" then
+            if norm and Squeeze(r) == norm then return r end
+            if r ~= only then only, count = r, count + 1 end
+          end
+        end
+      end
+    end
+  end
+  -- no realm readable at all: the one realm this character name is known on (none or several: nil)
+  if not norm and count == 1 then return only end
+end
+local function ByTime(x, y) return (tonumber(x.t) or 0) < (tonumber(y.t) or 0) end
+-- one character's book under two keys: sessions together (by time), milestones together, the better best, the newer
+-- running session
+local function MergeBook(into, from)
+  if type(from) ~= "table" then return into end
+  if type(into) ~= "table" then return from end
+  if type(into.e) ~= "table" then into.e = {} end
+  for _, e in ipairs(type(from.e) == "table" and from.e or {}) do
+    if type(e) == "table" then into.e[#into.e + 1] = e end
+  end
+  table.sort(into.e, ByTime)
+  if type(into.ms) ~= "table" then into.ms = {} end
+  for k, v in pairs(type(from.ms) == "table" and from.ms or {}) do into.ms[k] = v end
+  local fb, ib = type(from.best) == "table" and from.best, type(into.best) == "table" and into.best
+  if fb and (not ib or (tonumber(fb.fph) or 0) > (tonumber(ib.fph) or 0)) then into.best = fb end
+  local fo, io = type(from.open) == "table" and from.open, type(into.open) == "table" and into.open
+  if fo and (not io or (tonumber(fo.l) or 0) > (tonumber(io.l) or 0)) then into.open = fo end
+  return into
+end
+local function JoinKey(old, key)
+  local db = ns.db
+  if type(db) ~= "table" or old == key then return end
+  if type(db.skills) == "table" and db.skills[old] ~= nil then
+    local a, b = db.skills[key], db.skills[old]
+    -- the skill table with the higher last skill is the newer one
+    if type(a) ~= "table" or (type(b) == "table" and (tonumber(b.last) or 0) > (tonumber(a.last) or 0)) then db.skills[key] = b end
+    db.skills[old] = nil
+  end
+  local chars = type(db.book) == "table" and db.book.chars
+  if type(chars) == "table" and chars[old] ~= nil then
+    chars[key] = MergeBook(chars[key], chars[old])
+    chars[old] = nil
+  end
+  if type(db.lastSession) == "table" and db.lastSession.char == old then db.lastSession.char = key end
+end
 local function CharKey()
   if charKey then return charKey end
   local raw = UnitName and UnitName("player")
-  local realm = GetRealmName and GetRealmName()
-  if not (ns.Usable(raw) and type(raw) == "string") then raw = nil end
-  if not (ns.Usable(realm) and type(realm) == "string") then realm = nil end
+  if not (ns.Usable(raw) and type(raw) == "string" and raw ~= "") then raw = nil end
   local name = raw
   if raw and ns.Surnames() then name = ns.UnitNameRealm("player") or raw end -- (05.11.2026) Forever: "Mae Wipeborn"
+  local realm = Text(GetRealmName)
+  if not realm and name then
+    local norm = Text(GetNormalizedRealmName)
+    realm = KnownRealm(name, norm and Squeeze(norm)) or norm
+  end
   local key = (name or "?") .. "-" .. (realm or "?")
   if name and realm then
     charKey = key
     if raw ~= name then MoveOldKey(raw .. "-" .. realm, key) end
+    JoinKey(name .. "-", key)
+    JoinKey(name .. "-?", key)
   end
   return key
 end

@@ -100,4 +100,6 @@ ns.SPOT_AREA_NAMES = { [2] = "Longshore", [35] = "Booty Bay", [43] = "Wild Shore
 --   [1436] only 14 catches (own 14, 20 needed): 6308 x8, 6289 x4, 6358 x2 (not in CMaNGOS) of 14
 --   [1437] only 11 catches (own 11, 20 needed): 6361 x5 (not in CMaNGOS), 6358 x4 (not in CMaNGOS), 6359 x2 (not in CMaNGOS) of 11
 --   [1453] caught once only, not in CMaNGOS: 6361 x1
+--   [2548] only 2 catches (own 2, 20 needed): 4603 x2 (not in CMaNGOS) of 2
+--   [1434] only 3 catches (own 0, shared 3 from 1 reporter, 20 needed): 4234 x2 (not in CMaNGOS), 21150 x1 (not in CMaNGOS) of 3
 --   [1443] only 8 catches (own 0, shared 8 from 1 reporter, 20 needed): 6359 x3 (not in CMaNGOS), 6362 x3 (not in CMaNGOS), 6358 x1 (not in CMaNGOS), 21150 x1 (not in CMaNGOS) of 8

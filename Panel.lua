@@ -314,13 +314,15 @@ local function Create()
 
   headers.session = Style.Header(panel, L["Session"])
   rows.sessionEmpty = Style.Row(panel)
+  -- (24.11.2026, Fenstercheck) no casts yet: the last session of the fishing book below, a click opens the logbook
+  rows.sessionLast = Style.Row(panel)
   rows.catches = Style.Row(panel):SetTooltip(SessionTooltip)
   rows.rate = Style.Row(panel):SetTooltip(SessionTooltip)
   rows.fishH = Style.Row(panel):SetTooltip(SessionTooltip)
   rows.value = Style.Row(panel):SetTooltip(SessionTooltip)
   rows.valueAH = Style.Row(panel):SetTooltip(SessionTooltip) -- (1.0) only with Auctionator
   -- 1.17: a click on the session numbers opens the catch log. (1.3) Now the fishing book's logbook.
-  for _, r in ipairs({ rows.catches, rows.rate, rows.fishH, rows.value, rows.valueAH }) do
+  for _, r in ipairs({ rows.sessionLast, rows.catches, rows.rate, rows.fishH, rows.value, rows.valueAH }) do
     r:SetOnClick(function(_, button)
       if button == nil or button == "LeftButton" then ns.OpenBook("log") end
     end)
@@ -508,12 +510,18 @@ local function UpdateSession(known)
   local empty = s.casts == 0 and s.catches == 0
   -- 1.16: without Fishing learned there is no session to talk about.
   if not known and empty then
-    HideAll({ headers.session, rows.sessionEmpty, rows.catches, rows.rate, rows.fishH, rows.value, rows.valueAH, rows.goal })
+    HideAll({ headers.session, rows.sessionEmpty, rows.sessionLast, rows.catches, rows.rate, rows.fishH, rows.value,
+      rows.valueAH, rows.goal })
     return
   end
   Visible(headers.session, true)
   Visible(rows.sessionEmpty, empty)
-  if empty then Line(rows.sessionEmpty, L["No casts yet in this session."], "textHint") end
+  -- (24.11.2026, Fenstercheck, Daniel: "keine Sitzung") the empty part says how a session starts and names the last one
+  if empty then Line(rows.sessionEmpty, L["Cast Fishing to start a session."], "textHint") end
+  local last, day
+  if empty and ns.BookLastSession then last, day = ns.BookLastSession() end
+  Visible(rows.sessionLast, last and true or false)
+  if last then KV(rows.sessionLast, L["Last session"], L["%d fish, %s"]:format(tonumber(last.f) or 0, day or "-"), "textSecondary") end
   Visible(rows.catches, not empty)
   Visible(rows.value, not empty)
   KV(rows.catches, L["Catches"], Style.Number(s.catches))
@@ -572,7 +580,8 @@ local function UpdateZone(rank, modifier, known)
     if sneed then
       KV(rows.zone, zoneName, L["min. skill %d (reported)"]:format(sneed), total >= sneed and "good" or "critical")
     else
-      KV(rows.zone, zoneName, L["unknown"], "textHint")
+      -- (24.11.2026, Fenstercheck: "unknown" said nothing) what is unknown: the skill this zone needs
+      KV(rows.zone, zoneName, L["min. skill not known yet"], "textHint")
     end
   end
   local parts = need and partsNeed and total < partsNeed

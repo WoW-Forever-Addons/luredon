@@ -1,4 +1,4 @@
-local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 33)
+local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 34)
 
 ---------------------------------------------------------------------------
 -- DonCore module "Kit" (minor 1, 01.11.2026, STYLEKIT_PLAN.md "Schritt 2"; minor 2, 02.11.2026: Kit.IconButton, the symbols from
@@ -82,7 +82,7 @@ local Kit = LibStub("DonCore-1.0"):NewModule("Kit", 33)
 ---------------------------------------------------------------------------
 if not Kit then return end -- the same or a newer Kit is loaded already
 local Core = LibStub("DonCore-1.0")
-Kit.VERSION = 33
+Kit.VERSION = 34
 
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 local floor, ceil, max, min, abs, pi, sin, cos = math.floor, math.ceil, math.max, math.min, math.abs, math.pi, math.sin, math.cos
@@ -385,19 +385,39 @@ Kit.TooltipEdgeOwner = function() return edge.owner end -- (tests)
 
 -- (minor 19) where a tooltip opens: at the mouse for a wide owner (a list row, the tooltip right of the window was far from
 -- the row), right of a small one (a symbol)
+-- (minor 34, 24.11.2026, Fenstercheck Finddon: the tooltip at the mouse grew upwards over the search box, the options row and
+-- the help line) a wide owner gets the tooltip below and right of the mouse: "ANCHOR_NONE" with the offsets of its top
+-- left corner from the mouse (Kit.TIP_BELOW); it still opens where the mouse is (Daniel 05.11.2026). Kit.PlaceTip(tt,
+-- owner, anchor) does the placing for the Kit and for Blizz.lua.
 Kit.TIP_WIDE = 160
+Kit.TIP_BELOW = { 12, -18 }
 function Kit.TipAnchor(owner)
   local ok, w = false, nil
   if owner and type(owner.GetWidth) == "function" then ok, w = pcall(owner.GetWidth, owner) end
-  if ok and type(w) == "number" and w >= Kit.TIP_WIDE then return "ANCHOR_CURSOR_RIGHT", 12, 4 end
+  if ok and type(w) == "number" and w >= Kit.TIP_WIDE then return "ANCHOR_NONE", Kit.TIP_BELOW[1], Kit.TIP_BELOW[2] end
   return "ANCHOR_RIGHT", 0, 0
 end
-local function TipOwner(tt, owner, anchor)
+function Kit.PlaceTip(tt, owner, anchor)
+  if not tt then return false end
   if anchor then return pcall(tt.SetOwner, tt, owner, anchor) end
   local a, x, y = Kit.TipAnchor(owner)
+  if a == "ANCHOR_NONE" then
+    local okC, cx, cy = false, nil, nil
+    if type(GetCursorPosition) == "function" then okC, cx, cy = pcall(GetCursorPosition) end
+    if okC and tonumber(cx) and tonumber(cy) and pcall(tt.SetOwner, tt, owner, "ANCHOR_NONE") then
+      local okS, s = Call(tt, "GetEffectiveScale")
+      s = okS and tonumber(s) or 1
+      if s <= 0 then s = 1 end
+      Call(tt, "ClearAllPoints")
+      Call(tt, "SetPoint", "TOPLEFT", UIParent, "BOTTOMLEFT", cx / s + x, cy / s + y)
+      return true
+    end
+    a, x, y = "ANCHOR_CURSOR_RIGHT", 12, 4 -- (no mouse position: the old way)
+  end
   if pcall(tt.SetOwner, tt, owner, a, x, y) then return true end
   return pcall(tt.SetOwner, tt, owner, "ANCHOR_RIGHT")
 end
+local function TipOwner(tt, owner, anchor) return Kit.PlaceTip(tt, owner, anchor) end
 
 -- tooltip in the Don colours; lines: strings, { label, value [, colour], class = "MAGE" (symbol before the label) } or
 -- { header = "Text" }. (minor 18) title may be a head { text, sub, class or icon (+ coords), badge (gold, on the right) };

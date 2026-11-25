@@ -349,7 +349,9 @@ local UI = Kit
 local lookNote = "kit"
 local CIRCLE = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local TABS = { "log", "atlas", "waters" }
-local TAB_TITLE = { log = L["Logbook"], atlas = L["Fish atlas"], waters = L["Waters"] }
+-- (24.11.2026, Fenstercheck: "Fishing book / Fish atlas / Waters" read as three different things) the window is the fishing book, its tabs
+-- say what their list holds: Logbook, Fish, Zones (the keys and /ld atlas, /ld waters stay)
+local TAB_TITLE = { log = L["Logbook"], atlas = L["Fish"], waters = L["Zones"] }
 local JMAP = 52       -- the round map in the first tile of the logbook
 local TILE_H = 72
 local HERO_H = 96
@@ -412,6 +414,21 @@ local function ShortDate(t)
   local d = t and DateT(t)
   if not d then return "-" end
   return (L["{m}/{d}"]:gsub("{m}", tostring(d.month)):gsub("{d}", tostring(d.day)))
+end
+-- (24.11.2026, Fenstercheck, Daniel: "keine Sitzung") the small window's empty session part names the last session:
+-- its entry and its day ("Today", "Yesterday" or the short date); nil before the first one
+function ns.BookLastSession()
+  local cb = CharBook()
+  if not cb then return nil end
+  for i = #cb.e, 1, -1 do
+    local e = cb.e[i]
+    if type(e) == "table" and e.k == "s" then
+      local t = Num(e.t2) or Num(e.t)
+      local today = DayKey(Now())
+      local day = (t and DayKey(t) == today and L["Today"]) or (t and DayKey(t + 86400) == today and L["Yesterday"]) or ShortDate(t)
+      return e, day
+    end
+  end
 end
 local function Clock(t) local f = date or (os and os.date) local ok, s = pcall(f, "%H:%M", t) return ok and s or "--:--" end
 local function Span(sec)
@@ -590,7 +607,7 @@ local function EntryRow(e)
     elseif e.k == "r" then
       lines[#lines + 1] = { L["Zone"], ZoneName(e.z) }
     end
-    return Plain(title or ""), lines, e.z and L["Click: show the zone on the tab Waters."] or nil
+    return Plain(title or ""), lines, e.z and L["Click: show the zone on the tab Zones."] or nil
   end
   return it
 end
@@ -798,7 +815,7 @@ local function ZoneFishItems(m)
       end
       if own then lines[#lines + 1] = { L["Your share here"], Style.Percent(own) } end
       lines[#lines + 1] = { L["Caught here"], caughtHere and tostring(e.caught) or L["not yet"] }
-      return ItemName(e.id), lines, L["Click: in the fish atlas."]
+      return ItemName(e.id), lines, L["Click: show it on the tab Fish."]
     end
     items[#items + 1] = it
   end
@@ -825,7 +842,7 @@ local function CreateLogPage(page)
     if not m then return nil end
     local lines = {}
     for _, fs in ipairs(t._cutTexts or {}) do lines[#lines + 1] = Kit.FullText(fs) end
-    return ZoneName(m), lines, L["Click: show the zone on the tab Waters."]
+    return ZoneName(m), lines, L["Click: show the zone on the tab Zones."]
   end
   -- the zone you fish in, round in a gold ring (as Questdon's journal)
   local jm = CreateFrame("Frame", nil, P.ltiles[1].art)
@@ -1113,7 +1130,7 @@ local function RenderLog(reset)
   for _, chip in ipairs(P.lchips.chips) do chip:SetCount((counts[chip.key] or 0) > 0 and counts[chip.key] or nil) end
   P.lchips:SetActive(lfilter)
   book:SetStatus(L["%d sessions, %d fish, %d casts"]:format(counts.s, total, casts))
-  lists.log:SetEmpty(lfilter == "all" and L["No sessions yet. Equip your pole and cast: every session is written down here."] or L["Nothing for this filter."])
+  lists.log:SetEmpty(lfilter == "all" and (L["No sessions yet. A session starts with your first cast and ends when you put the pole away or after %d minutes without fishing."]):format(math.floor(GAP / 60)) or L["Nothing for this filter."])
   lists.log:SetItems(LogItems(), reset)
 end
 

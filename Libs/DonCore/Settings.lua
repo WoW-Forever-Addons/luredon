@@ -1,6 +1,13 @@
-local M = LibStub("DonCore-1.0"):NewModule("Settings", 6)
+local M = LibStub("DonCore-1.0"):NewModule("Settings", 7)
 if not M then return end
 local Core = LibStub("DonCore-1.0")
+
+-- (minor 7, 24.11.2026, Fenstercheck, Daniel: "Bei den Optionen immer nur das Optionsfenster des jeweiligen Addons
+-- aufmachen") with an Options module that opens one window per addon (Options minor 8, O.ownWindows) the game's AddOns
+-- list keeps one short page per addon: only the button "Options / Open" that opens the addon's own window.
+-- spec.fullPages no longer builds Blizzard's full pages then (no labels cut by the game's fixed column, no dark empty
+-- check boxes, no status lines that were written once at login and grew old, no section heads with a hanging tooltip).
+-- The look option's tip no longer says the options open in the game's settings.
 
 -- (minor 6, 20.11.2026, Daniel after a player did not find the way back to the old look: "bei allen addons den namen der
 -- option gleich machen", chosen: a choice Don / Blizzard) ns.LookOption(o): the one option item for the look of an
@@ -81,26 +88,26 @@ end
 
 -- (minor 6) the words of the look choice; English is the key
 local LOOK, LOOK_DON, LOOK_BLIZZ = "Window style", "Don look", "Blizzard look"
-local LOOK_TIP = "Don look: %s's windows in the style of the Don addons. Blizzard look: the windows look like the game's own, with the game's frames, tabs, buttons and lists; the options then open in the game's settings (Options > AddOns > %s) after a /reload. Where the game lacks its templates (Classic Era) the windows keep the Don look."
+local LOOK_TIP = "Don look: %s's windows in the style of the Don addons. Blizzard look: the windows look like the game's own, with the game's frames, tabs, buttons and lists; the options window follows the choice. Where the game lacks its templates (Classic Era) the windows keep the Don look."
 local LOOK_WORDS = {
   deDE = { [LOOK] = "Fensterstil", [LOOK_DON] = "Don-Look", [LOOK_BLIZZ] = "Blizzard-Look",
-    [LOOK_TIP] = "Don-Look: die Fenster von %s im Stil der Don-Addons. Blizzard-Look: die Fenster sehen aus wie die des Spiels, mit Rahmen, Reitern, Knöpfen und Listen des Spiels; die Optionen öffnen dann nach einem /reload in den Einstellungen des Spiels (Optionen > AddOns > %s). Wo dem Spiel die Vorlagen fehlen (Classic Era), bleiben die Fenster im Don-Look." },
+    [LOOK_TIP] = "Don-Look: die Fenster von %s im Stil der Don-Addons. Blizzard-Look: die Fenster sehen aus wie die des Spiels, mit Rahmen, Reitern, Knöpfen und Listen des Spiels; das Optionsfenster folgt der Wahl. Wo dem Spiel die Vorlagen fehlen (Classic Era), bleiben die Fenster im Don-Look." },
   esES = { [LOOK] = "Estilo de ventana", [LOOK_DON] = "Aspecto Don", [LOOK_BLIZZ] = "Aspecto Blizzard",
-    [LOOK_TIP] = "Aspecto Don: las ventanas de %s con el estilo de los addons Don. Aspecto Blizzard: las ventanas se ven como las del juego, con sus marcos, pestañas, botones y listas; las opciones se abren entonces en los ajustes del juego (Opciones > AddOns > %s) tras un /reload. Donde el juego no tiene sus plantillas (Classic Era), las ventanas conservan el aspecto Don." },
+    [LOOK_TIP] = "Aspecto Don: las ventanas de %s con el estilo de los addons Don. Aspecto Blizzard: las ventanas se ven como las del juego, con sus marcos, pestañas, botones y listas; la ventana de opciones sigue esta elección. Donde el juego no tiene sus plantillas (Classic Era), las ventanas conservan el aspecto Don." },
   esMX = { [LOOK] = "Estilo de ventana", [LOOK_DON] = "Aspecto Don", [LOOK_BLIZZ] = "Aspecto Blizzard",
-    [LOOK_TIP] = "Aspecto Don: las ventanas de %s con el estilo de los addons Don. Aspecto Blizzard: las ventanas se ven como las del juego, con sus marcos, pestañas, botones y listas; las opciones se abren entonces en los ajustes del juego (Opciones > AddOns > %s) tras un /reload. Donde el juego no tiene sus plantillas (Classic Era), las ventanas conservan el aspecto Don." },
+    [LOOK_TIP] = "Aspecto Don: las ventanas de %s con el estilo de los addons Don. Aspecto Blizzard: las ventanas se ven como las del juego, con sus marcos, pestañas, botones y listas; la ventana de opciones sigue esta elección. Donde el juego no tiene sus plantillas (Classic Era), las ventanas conservan el aspecto Don." },
   frFR = { [LOOK] = "Style des fenêtres", [LOOK_DON] = "Style Don", [LOOK_BLIZZ] = "Style Blizzard",
-    [LOOK_TIP] = "Style Don : les fenêtres de %s dans le style des addons Don. Style Blizzard : les fenêtres ressemblent à celles du jeu, avec ses cadres, onglets, boutons et listes ; les options s'ouvrent alors dans les réglages du jeu (Options > AddOns > %s) après un /reload. Là où le jeu n'a pas ses modèles (Classic Era), les fenêtres gardent le style Don." },
+    [LOOK_TIP] = "Style Don : les fenêtres de %s dans le style des addons Don. Style Blizzard : les fenêtres ressemblent à celles du jeu, avec ses cadres, onglets, boutons et listes ; la fenêtre des options suit ce choix. Là où le jeu n'a pas ses modèles (Classic Era), les fenêtres gardent le style Don." },
   koKR = { [LOOK] = "창 스타일", [LOOK_DON] = "Don 스타일", [LOOK_BLIZZ] = "블리자드 스타일",
-    [LOOK_TIP] = "Don 스타일: %s의 창을 Don 애드온의 스타일로 표시합니다. 블리자드 스타일: 창이 게임의 틀, 탭, 버튼, 목록을 사용해 게임 기본 창처럼 보입니다. 이때 설정은 /reload 후 게임 설정(설정 > 애드온 > %s)에서 열립니다. 게임에 해당 템플릿이 없는 경우(Classic Era) 창은 Don 스타일로 유지됩니다." },
+    [LOOK_TIP] = "Don 스타일: %s의 창을 Don 애드온의 스타일로 표시합니다. 블리자드 스타일: 창이 게임의 틀, 탭, 버튼, 목록을 사용해 게임 기본 창처럼 보입니다. 설정 창도 이 선택을 따릅니다. 게임에 해당 템플릿이 없는 경우(Classic Era) 창은 Don 스타일로 유지됩니다." },
   ptBR = { [LOOK] = "Estilo das janelas", [LOOK_DON] = "Visual Don", [LOOK_BLIZZ] = "Visual Blizzard",
-    [LOOK_TIP] = "Visual Don: as janelas do %s no estilo dos addons Don. Visual Blizzard: as janelas ficam como as do jogo, com suas molduras, abas, botões e listas; as opções passam a abrir nas configurações do jogo (Opções > AddOns > %s) após um /reload. Onde o jogo não tem seus modelos (Classic Era), as janelas mantêm o visual Don." },
+    [LOOK_TIP] = "Visual Don: as janelas do %s no estilo dos addons Don. Visual Blizzard: as janelas ficam como as do jogo, com suas molduras, abas, botões e listas; a janela de opções segue essa escolha. Onde o jogo não tem seus modelos (Classic Era), as janelas mantêm o visual Don." },
   ruRU = { [LOOK] = "Стиль окон", [LOOK_DON] = "Стиль Don", [LOOK_BLIZZ] = "Стиль Blizzard",
-    [LOOK_TIP] = "Стиль Don: окна %s в стиле аддонов Don. Стиль Blizzard: окна выглядят как окна игры, с её рамками, вкладками, кнопками и списками; настройки тогда открываются в настройках игры (Настройки > Модификации > %s) после /reload. Там, где в игре нет нужных шаблонов (Classic Era), окна остаются в стиле Don." },
+    [LOOK_TIP] = "Стиль Don: окна %s в стиле аддонов Don. Стиль Blizzard: окна выглядят как окна игры, с её рамками, вкладками, кнопками и списками; окно настроек следует этому выбору. Там, где в игре нет нужных шаблонов (Classic Era), окна остаются в стиле Don." },
   zhTW = { [LOOK] = "視窗風格", [LOOK_DON] = "Don 風格", [LOOK_BLIZZ] = "暴雪風格",
-    [LOOK_TIP] = "Don 風格：%s 的視窗使用 Don 插件的風格。暴雪風格：視窗看起來像遊戲內建視窗，使用遊戲的框架、分頁、按鈕和清單；此時選項會在 /reload 後於遊戲設定中開啟（選項 > 插件 > %s）。遊戲缺少這些範本時（Classic Era），視窗維持 Don 風格。" },
+    [LOOK_TIP] = "Don 風格：%s 的視窗使用 Don 插件的風格。暴雪風格：視窗看起來像遊戲內建視窗，使用遊戲的框架、分頁、按鈕和清單；選項視窗也會跟著這個選擇。遊戲缺少這些範本時（Classic Era），視窗維持 Don 風格。" },
   zhCN = { [LOOK] = "窗口风格", [LOOK_DON] = "Don 风格", [LOOK_BLIZZ] = "暴雪风格",
-    [LOOK_TIP] = "Don 风格：%s 的窗口使用 Don 插件的风格。暴雪风格：窗口看起来像游戏自带窗口，使用游戏的框体、标签页、按钮和列表；此时选项会在 /reload 后于游戏设置中打开（选项 > 插件 > %s）。游戏缺少这些模板时（Classic Era），窗口保持 Don 风格。" },
+    [LOOK_TIP] = "Don 风格：%s 的窗口使用 Don 插件的风格。暴雪风格：窗口看起来像游戏自带窗口，使用游戏的框体、标签页、按钮和列表；选项窗口也会跟随这个选择。游戏缺少这些模板时（Classic Era），窗口保持 Don 风格。" },
 }
 function M.LookWord(text)
   local loc = type(GetLocale) == "function" and GetLocale() or nil
@@ -281,7 +288,7 @@ function M:Attach(addonName, ns)
     local Opt = Core:Get("Options", 1)
     -- (minor 3, 16.11.2026, Blizzard look) spec.fullPages: the addon wants its pages in Blizzard's settings as without
     -- the Options module (it opens them there, Options spec.redirect); DonCore's window keeps its tabs as well
-    if Opt and spec.fullPages then
+    if Opt and spec.fullPages and not Opt.ownWindows then
       ns.donOptionsId = spec.name
       if not spec.ownWindow then Opt.FromSettings(spec, ns) end
     elseif Opt then
@@ -289,8 +296,9 @@ function M:Attach(addonName, ns)
       if not spec.ownWindow then Opt.FromSettings(spec, ns) end
       if not Available() then return nil end
       local main = Settings.RegisterVerticalLayoutCategory(spec.name)
-      local status = spec.status and spec.status() or {}
-      if CreateSettingsListSectionHeaderInitializer then
+      -- (minor 7) the status lives in the addon's own window (fresh on every look); before, Options minor 8, here too
+      local status = not Opt.ownWindows and spec.status and spec.status() or {}
+      if CreateSettingsListSectionHeaderInitializer and not Opt.ownWindows then
         if #status > 0 then
           Settings.RegisterInitializer(main, CreateSettingsListSectionHeaderInitializer(L("Status")))
           for _, line in ipairs(status) do
@@ -305,6 +313,10 @@ function M:Attach(addonName, ns)
         end), nil, false))
       end
       Settings.RegisterAddOnCategory(main)
+      -- (minor 7) an addon that asked for the full pages (spec.fullPages) opens its options in the game's settings when it
+      -- gets a category back (its ns.OpenGameOptions); with Options' own windows it gets nil, so its cog and slash
+      -- command end in its own window, while the short page with the button stays in the AddOns list
+      if spec.fullPages and Opt.ownWindows then return nil end
       return main
     end
     if not Available() then return nil end

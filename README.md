@@ -140,7 +140,7 @@ Ein Charakter, der Angeln noch nicht erlernt hat, bekommt sie erst, sobald er es
   und absurd große Fangziele werden begrenzt.
 
 ## Optionen
-Esc > Optionen > Reiter "AddOns" > Luredon (oder `/ld options`, oder über das AddOn-Menü an der Minimap).
+`/ld options`, das Zahnrad im Fangbuch oder das AddOn-Menü an der Minimap öffnen das Optionsfenster von Luredon. In Esc > Optionen > Reiter "AddOns" > Luredon steht eine kurze Seite mit dem Knopf "Optionen / Öffnen".
 - Startseite: Status (Version, "Insgesamt (Stand beim Login)", Hinweis auf `/ld help`), Knöpfe zu den Unterseiten und Werkzeuge:
   Angelausrüstung wechseln, Sitzung zurücksetzen, Position zurücksetzen, Zonen für deinen Skill, Fangbuch, Fangbuch exportieren,
   Fangbuch löschen, Fangdaten exportieren, Diagnose, Angelstatistik löschen.

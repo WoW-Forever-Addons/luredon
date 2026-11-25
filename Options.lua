@@ -185,8 +185,8 @@ local HELP = {
   { "/ld resetpos", L["window back to its place"] },
   { "/ld camp rack|hut", L["start a camp timer by hand"] },
   { L["/ld derby <day> <hour> | reset"], L["Fishing Extravaganza start (realm time)"] },
-  { "/ld book", L["fishing book (logbook, fish atlas, waters)"] },
-  { L["/ld log [export]"], L["fish atlas, catch log export"] },
+  { "/ld book", L["fishing book (logbook, fish, zones)"] },
+  { L["/ld log [export]"], L["tab Fish, catch log export"] },
   { "/ld export", L["catch data to copy"] },
   { "/ld diag", L["report for troubleshooting"] },
 }
@@ -287,9 +287,6 @@ local function RegisterWindow()
     status = Guard("option status", Status),
     help = Guard("option help", HelpText),
     buttonKey = function(section) return "button:" .. tostring(section) end,
-    -- (16.11.2026, DonCore Options 6) with the option blizzLook the options are the game's own settings pages: every
-    -- cog and /ld options ends there (the pages are built in full at login, Build below)
-    redirect = function() return ns.OpenGameOptions and ns.OpenGameOptions() or false end,
   })
   if ok and type(spec) == "table" then windowSpec = spec return spec end
   if not ok and ns.RecordError then ns.RecordError("option window", spec) end
@@ -302,27 +299,12 @@ local function SettingsSpec(ownWindow)
   return { name = "Luredon", status = Status, tools = TOOLS, pages = PAGES, ownWindow = ownWindow or nil }
 end
 ns.SettingsSpec = SettingsSpec -- (tests: the full pages Luredon builds without the Options module)
-
-local fullPages = false
 local function Build()
-  local spec = SettingsSpec(RegisterWindow() ~= nil)
-  -- (16.11.2026) the game's look: the full pages in the game's settings although DonCore's window is there
-  -- (only where the client has the templates: without them the windows are Don's and so is the options window)
-  if ns.db and ns.db.blizzLook and select(2, ns.LookKit()) then spec.fullPages, fullPages = true, true end
-  category = ns.BuildSettings(spec)
+  category = ns.BuildSettings(SettingsSpec(RegisterWindow() ~= nil))
 end
--- true when the game's settings were opened at Luredon (option blizzLook, pages built in full at login, not in combat)
-function ns.OpenGameOptions()
-  if not (ns.db and ns.db.blizzLook and fullPages and category and Settings and Settings.OpenToCategory) then return false end
-  if InCombatLockdown and InCombatLockdown() then ns.Print(L["Not possible in combat."]) return true end
-  Settings.OpenToCategory(category:GetID())
-  return true
-end
-function ns.OptionsLook() return fullPages and "game settings" or "don window" end
 
 -- tab: optional tab key of the window ("casting", "sound", "gear", "session", "appearance", "tools")
 function ns.OpenOptions(tab)
-  if ns.OpenGameOptions and ns.OpenGameOptions() then return end -- (16.11.2026) the game's look: the game's settings
   local Opt = OptionsModule()
   if Opt and Opt.Open and RegisterWindow() and Opt.Open(OPTIONS_ID, tab) then return end
   if InCombatLockdown() then ns.Print(L["Not possible in combat."]) return end

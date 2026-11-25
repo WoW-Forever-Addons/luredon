@@ -1,5 +1,15 @@
 # Changes
 
+## 1.8.0
+
+- **Sessions come back:** when the game gives no realm name, your fishing sessions are no longer lost.
+- **Clearer empty states:** with no session the book says "Cast Fishing to start a session." and shows your last session; the Logbook explains when a session begins and ends.
+- **Tabs renamed:** the fishing book tabs are now Logbook, Fish and Zones, so they no longer read like three different windows. The commands stay.
+- **Skill of a zone:** "min. skill not known yet" replaces "unknown" where no value is known.
+- **Data of 24 November:** fishing data refreshed.
+- **Tabs and list headers in the game's look:** group headers in lists are the game's own bars, with plus and minus on the right.
+- **Options open in their own window:** the options button, the cog, the minimap button and `/ld options` open only Luredon's own options window. Tooltips of wide rows now sit beside the mouse.
+
 ## 1.7.3
 
 - **Data of 21 November:** fishing data refreshed with the catches of more players.

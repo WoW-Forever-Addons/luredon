@@ -1,4 +1,4 @@
-local O = LibStub("DonCore-1.0"):NewModule("Options", 7)
+local O = LibStub("DonCore-1.0"):NewModule("Options", 8)
 
 ---------------------------------------------------------------------------
 -- DonCore module "Options" (minor 1, 01.11.2026, STYLEKIT_PLAN.md "Schritt 3"): one options window for every Don addon
@@ -27,11 +27,21 @@ local O = LibStub("DonCore-1.0"):NewModule("Options", 7)
 -- (minor 5, 04.11.2026, Era-Test) an item made by DonCore (item.donCommon, e.g. MinimapButton's ns.MinimapOption()) runs
 -- its onChange(value) here after spec.changed, so an addon with its own Register spec needs no code for it (FromSettings
 -- specs already run onChange in their changed()).
+-- (minor 8, 24.11.2026, Fenstercheck, Daniel: "Bei den Optionen immer nur das Optionsfenster des jeweiligen Addons
+-- aufmachen") one window per addon: O.Open(id, tab) shows only that addon's tabs (and the shared page "General" with the
+-- window scale last), the search looks only there, the head names the addon. The window takes the addon's look: the
+-- game's look (Blizz.lua, window DonCoreOptionsBlizz) when the addon's db.blizzLook is on (spec.look() -> true / false
+-- decides instead) and the client has the templates, else the Don look (DonCoreOptions). spec.redirect is no longer
+-- followed (O.followRedirect = true brings the old way back): every cog, options button and slash command ends here.
+-- Long names and explanations wrap in their row (the row grows) instead of ending in "...". O.ownWindows tells Settings
+-- (minor 7) to keep only the short page (status and a button) in the game's AddOns list. O.Home() is the addon shown.
 -- Needs Kit (minor 2). Only own frames, no hooks, no SavedVariables (place and size kept for the session).
 ---------------------------------------------------------------------------
 if not O then return end
 local Core = LibStub("DonCore-1.0")
-O.VERSION = 5
+O.VERSION = 8
+O.ownWindows = true -- (minor 8) one window per addon; Settings 7 reads it
+O.wins = O.wins or {} -- (minor 8) "don" and "blizz": the window in each look, built when first needed
 O.addons = O.addons or {}   -- id -> spec (kept across upgrades)
 O.ids = O.ids or {}         -- ids in the order they registered
 O.store = O.store or {}     -- the window's place and size for the session
@@ -42,7 +52,9 @@ local ipairs, pairs, type, tostring, tonumber, pcall = ipairs, pairs, type, tost
 local PREV_W, NAV_W, TEXT_H, RESET_SECONDS = 270, 200, 20, 5
 local ICON_FALLBACK = "Interface\\Icons\\INV_Misc_QuestionMark"
 
-local function K() return Core:Get("Kit", 2) end -- (minor 2: Kit.IconButton for the cog)
+local function BaseKit() return Core:Get("Kit", 2) end -- (minor 2: Kit.IconButton for the cog)
+-- (minor 8) the blocks of the window being drawn: the Kit, or the Blizz kit for the window in the game's look
+local function K() return (O.win and O.win.kit) or BaseKit() end
 
 -- O.onError = function(where, err) ... end (set by an addon); nil: errors of callbacks stay silent
 local function Safe(where, fn, ...)
@@ -429,11 +441,27 @@ local function Lines(text)
   return out
 end
 
+-- (minor 8) the addons this window shows: its own (O.state.home), then the shared page "General"
+local function Shown()
+  local st = O.state
+  local home = st.home and O.addons[st.home] and st.home
+  if not home then for _, id in ipairs(O.ids) do if id ~= O.GENERAL then home = id break end end end
+  home = home or (O.addons[O.GENERAL] and O.GENERAL)
+  st.home = home
+  local out = {}
+  if home then out[1] = home end
+  if home ~= O.GENERAL and O.addons[O.GENERAL] then out[#out + 1] = O.GENERAL end
+  return out
+end
+O.Shown = Shown -- (tests)
+function O.Home() return (Shown())[1] end
+
 local function CurrentSpec()
   local st = O.state
-  local spec = st.addon and O.addons[st.addon]
-  if not spec then spec = O.addons[O.ids[1]] st.addon = spec and spec.id end
-  return spec
+  local shown, ok = Shown(), false
+  for _, id in ipairs(shown) do if id == st.addon then ok = true end end
+  if not ok then st.addon = shown[1] end
+  return st.addon and O.addons[st.addon]
 end
 local function CurrentTab(spec)
   if not spec then return nil end
@@ -447,7 +475,7 @@ local function Entries()
   local out, st = {}, O.state
   local q = (st.query or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
   if q ~= "" then
-    for _, id in ipairs(O.ids) do
+    for _, id in ipairs(Shown()) do
       local spec = O.addons[id]
       local ix = Index(spec)
       for _, tab in ipairs(spec.tabs) do
@@ -510,7 +538,26 @@ O.Entries = Entries -- (tests)
 ---------------------------------------------------------------------------
 -- Rows: pooled per kind; an option row carries one control of each sort and shows the one it needs
 ---------------------------------------------------------------------------
-local pools, used = { option = {}, header = {}, text = {} }, {}
+-- (minor 8) the rows belong to their window (each look has its own): win._pools, win._used, win._sliders
+local function Pools()
+  local w = O.win
+  w._pools = w._pools or { option = {}, header = {}, text = {} }
+  return w._pools
+end
+local function Used() local w = O.win if not w then return {} end w._used = w._used or {} return w._used end
+-- a click on a switch: the Kit's switch is the button, the game's check box sits in t.check
+local function ClickToggle(t)
+  if t.check and t.check.Click then t.check:Click() return end
+  local f = t:GetScript("OnClick")
+  if f then f(t, "LeftButton") end
+end
+local function OpenDrop(d)
+  if d.Open then d:Open() elseif d.OpenMenu then pcall(d.OpenMenu, d) end
+end
+local function DropShown(d)
+  if d.text and d.text.GetText then return d.text:GetText() end
+  return d.shownText
+end
 local Render, Preview
 
 local function Hover(r)
@@ -572,10 +619,11 @@ local function NewOptionRow(parent)
 end
 
 -- a slider per option (its range is fixed when it is made), kept on the row that shows it
-local sliders = {}
 local function SliderFor(r, e)
   local Kit = K()
   local id = e.spec.id .. ":" .. e.key
+  O.win._sliders = O.win._sliders or {}
+  local sliders = O.win._sliders
   local s = sliders[id]
   if not s then
     local item = e.item
@@ -599,7 +647,7 @@ local function SliderFor(r, e)
 end
 
 local function Take(kind, parent)
-  local pool = pools[kind]
+  local pool = Pools()[kind]
   pool.used = (pool.used or 0) + 1
   local r = pool[pool.used]
   if not r then
@@ -620,6 +668,7 @@ local function Take(kind, parent)
     r.kind = kind
     pool[pool.used] = r
   end
+  local used = Used()
   used[#used + 1] = r
   r.entry, r.item, r.optKey, r.onClick, r.btn = nil, nil, nil, nil, nil
   r:ClearAllPoints()
@@ -646,7 +695,7 @@ local function FillOption(r, e)
     else local t = db[key] v = type(t) == "table" and t[e.choice.value] end
     r.toggle:SetValue(v and true or false)
     r.control = r.toggle
-    if not off then r.onClick = function() r.toggle:GetScript("OnClick")(r.toggle, "LeftButton") end end
+    if not off then r.onClick = function() ClickToggle(r.toggle) end end
     r.btn = r.control
     r.control:Show()
     r:SetText(e.choice.text, "")
@@ -667,7 +716,7 @@ local function FillOption(r, e)
       -- off (t.state() -> true / false) is a switch showing its state, not a button
       r.toggle:SetValue(Safe("tool state", t.state) and true or false)
       r.control = r.toggle
-      r.onClick = function() r.toggle:GetScript("OnClick")(r.toggle, "LeftButton") end
+      r.onClick = function() ClickToggle(r.toggle) end
     else
       r.button:SetText(T(spec, t[2]))
       r.button._onClick = function() Safe("tool", t[3]) Render() end
@@ -693,15 +742,17 @@ local function FillOption(r, e)
       for _, o in ipairs(r.dropItems) do if Same(o.value, v) then v = o.value break end end
       r.drop:Update(v)
       -- a value the list does not know: shown as it is stored
-      if r.drop.text:GetText() == "" and v ~= nil then r.drop.text:SetText(tostring(v)) end
+      if (DropShown(r.drop) or "") == "" and v ~= nil then
+        if r.drop.text then r.drop.text:SetText(tostring(v)) elseif r.drop.OverrideText then pcall(r.drop.OverrideText, r.drop, tostring(v)) end
+      end
     end
     r.control = r.drop
-    if not off then r.onClick = function() r.drop:Open() end end
+    if not off then r.onClick = function() OpenDrop(r.drop) end end
   elseif item.kind == "button" and type(item.state) == "function" then
     -- a page button that switches something (a window shown or not): a switch with its state, like a tool with state
     r.toggle:SetValue(Safe("button state", item.state) and true or false)
     r.control = r.toggle
-    r.onClick = function() r.toggle:GetScript("OnClick")(r.toggle, "LeftButton") end
+    r.onClick = function() ClickToggle(r.toggle) end
   elseif item.kind == "button" then
     r.button:SetText(item.button and T(spec, item.button) or Label("Open"))
     r.button._onClick = function() Safe("button", item.onClick) Render() end
@@ -712,7 +763,7 @@ local function FillOption(r, e)
     local why = on and item.status and Safe("status", item.status)
     if why then desc, warn = tostring(why), true end
     r.control = r.toggle
-    if not off then r.onClick = function() r.toggle:GetScript("OnClick")(r.toggle, "LeftButton") end end
+    if not off then r.onClick = function() ClickToggle(r.toggle) end end
   end
   r.btn = r.control
   r.control:Show()
@@ -722,6 +773,64 @@ local function FillOption(r, e)
   r:SetDisabled(off and true or false)
 end
 
+-- (minor 8, Fenstercheck: names and explanations ended in "...") a text longer than its room wraps (up to MAX_LINES
+-- lines) and the row grows; a row whose texts fit stays one line each, as before
+local MAX_LINES = { label = 3, desc = 4 }
+local function LineH(fs, fallback)
+  local ok, _, size = pcall(fs.GetFont, fs)
+  size = ok and tonumber(size)
+  return size and size > 0 and (size + 3) or fallback
+end
+local function Unwrap(fs)
+  if not (fs and fs._donWrapped) then return end
+  fs._donWrapped = nil
+  fs._fitKey = nil
+  pcall(fs.SetWordWrap, fs, false)
+  pcall(fs.SetMaxLines, fs, 1)
+end
+local function Wrap(fs, budget, maxLines)
+  local Kit = K()
+  local text = fs.GetText and fs:GetText() or ""
+  if text == "" then return 0 end
+  local w = (Kit.TextWidth and Kit.TextWidth(fs)) or 0
+  if w <= budget + 0.5 then return 1 end
+  local St = Core:Get("Style", 1)
+  if not Kit.blizzLook and St and St.FitText then St.FitText(fs, budget, "wrap") end -- back to the font's own size
+  w = (Kit.TextWidth and Kit.TextWidth(fs)) or w
+  fs._donWrapped = true
+  pcall(fs.SetWordWrap, fs, true)
+  pcall(fs.SetMaxLines, fs, maxLines)
+  pcall(fs.SetJustifyV, fs, "TOP")
+  fs:SetWidth(budget)
+  local lines = min(maxLines, max(1, math.ceil(w / budget)))
+  -- the game knows the real height of the wrapped text (a word that does not fit takes one more line)
+  local ok, sh = pcall(fs.GetStringHeight, fs)
+  local lh = LineH(fs, 14)
+  if ok and tonumber(sh) and sh > lh * lines + 1 then lines = min(maxLines, math.ceil(sh / lh - 0.2)) end
+  return lines
+end
+-- after r:Layout(w): wrap what did not fit, place the explanation under the name, the row's height
+local function WrapRow(r, w)
+  local Kit = K()
+  local S = Kit.SIZE
+  local x = S.pad + (r.indent or 0)
+  local cw = r.control and r.control.IsShown and r.control:IsShown() and r.control:GetWidth() or 0
+  local budget = max(40, w - x - S.pad - cw - S.pad)
+  local nL = Wrap(r.label, budget, MAX_LINES.label)
+  local nD = Wrap(r.desc, budget, MAX_LINES.desc)
+  if nL <= 1 and nD <= 1 then return S.row end
+  local lh, dh = LineH(r.label, 15), LineH(r.desc, 13)
+  r.label:ClearAllPoints()
+  r.label:SetPoint("TOPLEFT", r, "TOPLEFT", x, -6)
+  if nD > 0 then
+    r.desc:ClearAllPoints()
+    r.desc:SetPoint("TOPLEFT", r.label, "BOTTOMLEFT", 0, -2)
+  end
+  local h = 6 + max(1, nL) * lh + (nD > 0 and (2 + nD * dh) or 0) + 7
+  return max(S.row, floor(h + 0.5))
+end
+O.WrapRow = WrapRow -- (tests)
+
 local function Place(e, parent, y, w)
   local Kit = K()
   local S = Kit.SIZE
@@ -729,10 +838,12 @@ local function Place(e, parent, y, w)
   if e.kind == "option" or e.kind == "tool" then
     r = Take("option", parent)
     r:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -y)
-    r:SetHeight(S.row)
+    Unwrap(r.label) Unwrap(r.desc)
     FillOption(r, e)
     r:Layout(w)
-    return y + S.row
+    local h = WrapRow(r, w)
+    r:SetHeight(h)
+    return y + h
   elseif e.kind == "header" or e.kind == "more" then
     r = Take("header", parent)
     r.entry = e
@@ -764,7 +875,7 @@ local function NavItems()
   local st = O.state
   local spec = CurrentSpec()
   local tab = CurrentTab(spec)
-  for _, id in ipairs(O.ids) do
+  for _, id in ipairs(Shown()) do
     local s = O.addons[id]
     items[#items + 1] = { kind = "group", static = true, text = Plain(s.name or id) }
     for _, t in ipairs(s.tabs) do
@@ -848,8 +959,9 @@ local function LayoutRows()
   local win = O.win
   if not win then return end
   local w = win._cw or 400
+  local pools = Pools()
   for _, pool in pairs(pools) do pool.used = 0 end
-  used = {}
+  win._used = {}
   local y = K().SIZE.pad
   for _, e in ipairs(win.entries or {}) do y = Place(e, win.area.content, y, w) end
   for _, pool in pairs(pools) do for i = (pool.used or 0) + 1, #pool do pool[i]:Hide() end end
@@ -858,7 +970,7 @@ end
 
 local function Layout(win, w, h, mode)
   if not win.nav then return end
-  local Kit = K()
+  local Kit = win.kit or K()
   local S = Kit.SIZE
   local rail = mode == "rail"
   local navW = rail and S.rail or NAV_W
@@ -880,8 +992,9 @@ local function Layout(win, w, h, mode)
   end
   local sw = min(260, max(140, floor(w * 0.28)))
   win.search:Layout(sw)
-  Kit.Fit(win.title, max(40, w - sw - 3 * S.pad - S.buttonSmall - S.gap))
+  if win.title and not Kit.blizzLook then Kit.Fit(win.title, max(40, w - sw - 3 * S.pad - S.buttonSmall - S.gap)) end
   if win.reset then win.reset:ClearAllPoints() win.reset:SetPoint("RIGHT", win.footer, "RIGHT", -S.pad - 16, 0) end
+  if win ~= O.win then return end -- (minor 8) the other look's window: drawn when it is the one shown
   LayoutRows()
   Preview()
 end
@@ -916,20 +1029,28 @@ local function ResetTab()
 end
 O.ResetTab = ResetTab
 
-local function Create()
-  local Kit = K()
+-- (minor 8) kit: the Kit (window DonCoreOptions) or the Blizz kit (DonCoreOptionsBlizz, the game's frame at 100 %,
+-- so a little smaller; the search in the strip under the title, as in the game's own windows)
+local function Create(kit)
+  local Kit = kit or BaseKit()
   if not Kit then return nil end
   local S = Kit.SIZE
-  local win = Kit.Window("DonCoreOptions", { title = Label("Options"), width = 980, height = 640, footer = true,
-    store = O.store, onLayout = Layout })
+  local blizz = Kit.blizzLook and true or false
+  local win = Kit.Window(blizz and "DonCoreOptionsBlizz" or "DonCoreOptions", { title = Label("Options"),
+    width = blizz and 860 or 980, height = blizz and 580 or 640, footer = true, store = O.store, onLayout = Layout,
+    min = blizz and { 560, 360 } or nil })
+  win.kit, win.look = Kit, blizz and "blizz" or "don"
+  O.wins[win.look] = win
   O.win = win
-  win.search = Kit.SearchBox(win.header, { placeholder = Label("Search all options"), onChange = function(text)
+  win.search = Kit.SearchBox(blizz and win or win.header, { placeholder = Label("Search all options"), onChange = function(text)
+    if O.win ~= win then return end
     O.state.query, O.state.hovered = text or "", nil
     win.area:SetOffset(0)
     Render()
   end })
-  win.search:SetPoint("RIGHT", win.close, "LEFT", -S.gap, 0)
-  win.nav = Kit.Sidebar(win.body, { onClick = function(it)
+  if blizz then win.search:SetPoint("TOPRIGHT", win, "TOPRIGHT", -14, -32)
+  else win.search:SetPoint("RIGHT", win.close, "LEFT", -S.gap, 0) end
+  win.navClick = function(it) -- (minor 8, tests: a click on an entry of the left side)
     if not it.id then return end
     O.state.addon, O.state.hovered, O.state.query = it.id, nil, ""
     O.state.tabOf[it.id] = it.tab
@@ -937,7 +1058,8 @@ local function Create()
     win.search:ClearFocus()
     win.area:SetOffset(0)
     Render()
-  end })
+  end
+  win.nav = Kit.Sidebar(win.body, { onClick = function(it) win.navClick(it) end })
   win.nav:SetPoint("TOPLEFT", win.body, "TOPLEFT", 0, 0)
   win.area = Kit.ScrollArea(win.body)
   local wheel = win.area:GetScript("OnMouseWheel")
@@ -952,14 +1074,14 @@ local function Create()
   local bg = p:CreateTexture(nil, "BACKGROUND")
   bg:SetTexture("Interface\\Buttons\\WHITE8x8")
   bg:SetAllPoints(p)
-  bg:SetVertexColor(Kit.C.card[1], Kit.C.card[2], Kit.C.card[3], 1)
+  if blizz then bg:SetVertexColor(0, 0, 0, 0.35) else bg:SetVertexColor(Kit.C.card[1], Kit.C.card[2], Kit.C.card[3], 1) end
   p.pic = p:CreateTexture(nil, "ARTWORK")
   p.pic:SetPoint("TOPLEFT", p, "TOPLEFT", 12, -12)
   p.title = Kit.Text(p, "title", Kit.C.txGold)
   p.title:SetPoint("TOPLEFT", p.pic, "BOTTOMLEFT", 0, -14)
   -- the explanation is the one text of the window that wraps (it is read, not scanned)
   p.text = p:CreateFontString(nil, "OVERLAY")
-  local fo = Kit.Font("row")
+  local fo = blizz and "GameFontHighlight" or (Kit.Font and Kit.Font("row"))
   if fo then pcall(p.text.SetFontObject, p.text, fo) end
   p.text:SetTextColor(Kit.C.body[1], Kit.C.body[2], Kit.C.body[3], 1)
   p.text:SetJustifyH("LEFT")
@@ -968,13 +1090,80 @@ local function Create()
   p.text:SetPoint("TOPLEFT", p.title, "BOTTOMLEFT", 0, -10)
   -- footer: what to know, "Reset this tab"
   win.reset = Kit.Button(win.footer, Label("Reset this tab"), { small = true, onClick = function() ResetTab() end })
-  win:SetScript("OnHide", function()
+  local hide = win:GetScript("OnHide")
+  win:SetScript("OnHide", function(self, ...)
+    if hide then hide(self, ...) end
     if Kit._menu and Kit._menu:IsShown() then Kit._menu:Hide() end
     O.state.hovered = nil
   end)
   win:Layout()
   win:Hide()
   return win
+end
+
+-- (minor 8) the look of an addon's options window: spec.look() (true / "blizz" = the game's look), else its db.blizzLook
+-- (a value never stored: its default); the game's look only where the client has the templates (Blizz.lua)
+local function WantsBlizz(spec)
+  if not spec or spec.id == O.GENERAL then return false end
+  local v
+  if type(spec.look) == "function" then v = Safe("look", spec.look)
+  else
+    v = DB(spec).blizzLook
+    if v == nil then v = Default(spec, "blizzLook") end
+  end
+  return v == true or v == "blizz"
+end
+local function BlizzKit()
+  local Bz = Core:Get("Blizz", 5)
+  if not (Bz and Bz.Kit) then return nil, "no Blizz module" end
+  local ok, kit, why = pcall(Bz.Kit)
+  if not ok then return nil, tostring(kit) end
+  return kit, why
+end
+-- the window for the addon's look; a build of the game's look that fails falls back to the Don look (O.blizzFailed says why)
+local function WindowFor(spec)
+  local want = WantsBlizz(spec) and not O.blizzFailed
+  local kit, why = nil, nil
+  if want then kit, why = BlizzKit() end
+  local look = kit and "blizz" or "don"
+  O.lookWhy = want and not kit and why or nil
+  local win = O.wins[look]
+  if not win then
+    local keep = O.win
+    local ok, made = pcall(Create, kit or BaseKit())
+    if ok and made then win = made
+    else
+      O.win = keep
+      if look == "blizz" then
+        O.blizzFailed = tostring(made or "no window")
+        local half = _G and _G.DonCoreOptionsBlizz
+        if type(half) == "table" and half.Hide then pcall(half.Hide, half) end
+        O.wins.blizz = nil
+        if type(O.onError) == "function" then pcall(O.onError, "blizz window", O.blizzFailed) end
+        return WindowFor(spec)
+      end
+      if type(O.onError) == "function" then pcall(O.onError, "window", tostring(made)) end
+      return nil
+    end
+  end
+  for k, other in pairs(O.wins) do if k ~= look and other.IsShown and other:IsShown() then other:Hide() end end
+  O.win = win
+  return win
+end
+O.WantsBlizz = WantsBlizz -- (tests)
+function O.Look() return O.win and O.win.look, O.lookWhy or O.blizzFailed end -- (diag) "don" / "blizz", why not the game's
+
+-- the head names the addon: "QUESTDON · OPTIONS" (Don look), "Questdon · Options" in the game's frame with its icon
+local function Title(win, spec)
+  local name = spec and Plain(spec.name or spec.id) or Label("Options")
+  if win.look == "blizz" then
+    if type(win.opts) == "table" then win.opts.title = name end
+    if win.SetSubtitle then win:SetSubtitle(Label("Options")) end
+    if spec and spec.icon and win.SetPortraitToAsset then pcall(win.SetPortraitToAsset, win, spec.icon) end
+  else
+    if win.title then win.title:SetText(name:upper()) end
+    if win.SetSubtitle then win:SetSubtitle(Label("Options")) end
+  end
 end
 
 Render = function()
@@ -1004,15 +1193,23 @@ O.Render = function() return Render() end
 -- id: the addon to show (default: the one shown last, else the first); tab: its tab key
 -- (minor 6, 16.11.2026, Blizzard look, Luredon) spec.redirect(tab) -> true: the addon showed its options itself (the
 -- game's own settings page); every cog and O.Open of that addon then ends there and this window stays shut.
+-- (minor 8) the window shows only the addon id (O.state.home) and "General"; redirect only with O.followRedirect
 function O.Open(id, tab)
   local own = id and O.addons[id]
-  if own and type(own.redirect) == "function" then
+  if O.followRedirect and own and type(own.redirect) == "function" then
     local ok, done = pcall(own.redirect, tab)
     if ok and done then return nil end
   end
-  if not O.win and not Create() then return nil end
   local st = O.state
-  if id and O.addons[id] then st.addon = id end
+  if own then
+    if id ~= O.GENERAL or not st.home then st.home = id end
+    st.addon = id
+  end
+  Shown()
+  local home = st.home and O.addons[st.home]
+  local win = WindowFor(home)
+  if not win then return nil end
+  Title(win, home)
   local spec = CurrentSpec()
   if spec and tab and TabOf(spec, tab) then st.tabOf[spec.id] = tab end
   st.hovered, st.query, st.resetAsk = nil, "", nil
@@ -1032,7 +1229,7 @@ function O.Open(id, tab)
   return O.win
 end
 function O.Toggle(id)
-  if O.win and O.win:IsShown() and (not id or O.state.addon == id) then O.win:Hide() return end
+  if O.win and O.win:IsShown() and (not id or O.state.home == id or O.state.addon == id) then O.win:Hide() return end
   O.Open(id)
 end
 function O.Search(text)
@@ -1045,7 +1242,7 @@ end
 -- tooltip "Options", a click opens this window at the addon (and tab). The addon only places it:
 --   local cog = Opt.Button(header, "Geardon")   cog:SetPoint("RIGHT", close, "LEFT", -6, 0)
 function O.Button(parent, id, tab)
-  local Kit = K()
+  local Kit = BaseKit()
   if not Kit then return nil end
   local b = Kit.IconButton(parent, "options", { tooltip = Label("Options"),
     onClick = function() O.Open(id, tab) end })
@@ -1060,7 +1257,7 @@ function O.OpenFromBlizzard(id, tab)
 end
 
 function O.Frame() return O.win end
-function O.Rows() local out = {} for i, r in ipairs(used) do out[i] = r end return out end -- (tests)
+function O.Rows() local out = {} for i, r in ipairs(Used()) do out[i] = r end return out end -- (tests)
 function O.NavItems() return (NavItems()) end -- (tests)
 
 ---------------------------------------------------------------------------
