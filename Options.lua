@@ -67,6 +67,7 @@ local PAGES = {
     { header = "Hooking" },
     { key = "softInteract", name = "Longer interact range while fishing", tip = "Raises the soft interact range while the line is out, so the interact key can hook the bobber. The range may be capped by the client." },
     { key = "bobberCursor", name = "Bobber at the mouse pointer", tip = "While the mouse is on your bobber, a small bobber sits at the pointer. Its colour turns amber in the last seconds before the line comes in, green when you caught something and red when the fish got away." },
+    { key = "bobberBeam", name = "Light beam on the bobber", tip = "While the line is out, a soft light beam stands on your bobber so you find it at once. The game's gear icon on the bobber is hidden meanwhile; your interact icon settings come back when the line comes in.", onChange = function() if ns.UpdateBeam then ns.UpdateBeam() end end }, -- (26.11.2026)
   } },
   { title = "Gear and tracking", tip = "Equipment sets and Find Fish.", items = {
     { header = "Equipment sets" },

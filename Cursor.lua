@@ -71,6 +71,17 @@ local function TooltipText()
   return text
 end
 
+-- (26.11.2026) for Beam.lua: is this name the bobber, is the line out
+function ns.IsBobberName(text)
+  if type(text) ~= "string" or text == "" then return false end
+  local lower = text:lower()
+  for _, w in ipairs(BOBBER_WORDS) do
+    if lower:find(w, 1, true) then return true end
+  end
+  return ns.db and ns.db.bobberName and text == ns.db.bobberName or false
+end
+function ns.LineOut() return lineOut and true or false end
+
 -- Is the mouse on the bobber? Only while the line is out and over the world.
 local function OverBobber()
   if not lineOut then return false end
@@ -148,6 +159,8 @@ local function Step(elapsed)
   if over then lastOver = now; overSince = overSince or now else overSince = nil end
   -- after the click the line is in: the result stays at the last spot for a moment
   local want = over or (result and now - resultAt < RESULT_TIME and now - lastOver < RESULT_TIME + 0.5)
+  -- (26.11.2026, Daniel) while the beam test's light beam stands on the bobber, the pointer bobber stays away
+  if want and ns.BeamShown and ns.BeamShown() then want = false end
   alpha = want and math.min(1, alpha + elapsed / FADE) or math.max(0, alpha - elapsed / FADE)
   if alpha <= 0 then
     frame:Hide()

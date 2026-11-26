@@ -25,6 +25,7 @@ ns.defaults = {
   softInteract = true,  -- (04.11.2026, Era-Test, Daniel: "longer interact range while fishing an") on from the start
   interactCast = true,  -- (04.11.2026, Era-Test) the interact key casts and applies the lure too (Cast.lua)
   bobberCursor = true,  -- (1.4.1) small bobber at the pointer while the mouse is on the bobber
+  bobberBeam = true,    -- (26.11.2026, Daniel: "Ja, ab Werk an") light beam on the bobber while the line is out (Beam.lua)
   findFish = true,
   showPanel = true,
   minimapButton = true, -- (04.11.2026, Era-Test) the minimap button (MinimapButton.lua); minimapAngle nil: 150
@@ -38,6 +39,7 @@ ns.defaults = {
   panelWidth = nil,      -- (04.11.2026, Era-Test) width of the small window from its grip (220 to 400; nil: 240)
   savedSounds = nil,
   savedSoft = nil,
+  savedBeam = nil,      -- (26.11.2026) the player's soft target icon CVars while the beam runs
   zones = {},
   catches = {},
   lifetime = { casts = 0, fish = 0, getaways = 0 },

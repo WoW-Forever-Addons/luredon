@@ -1,5 +1,9 @@
 # Changes
 
+## 1.9.0
+
+- **Light beam on the bobber:** a soft golden beam stands on your bobber while the line is out, so you find it at once. On by default, option "Light beam on the bobber". New files: restart the game once after updating.
+
 ## 1.8.0
 
 - **Sessions come back:** when the game gives no realm name, your fishing sessions are no longer lost.

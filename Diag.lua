@@ -251,6 +251,10 @@ local function Extras(out)
     local bp = ns.BobberPointerState()
     out[#out + 1] = ("bobber pointer: option %s, line out %s, ticking %s, shown %s"):format(Show(ns.db.bobberCursor), Show(bp.lineOut), Show(bp.ticking), Show(bp.shown))
   end
+  if ns.BeamState then -- (26.11.2026)
+    local bs = ns.BeamState()
+    out[#out + 1] = ("bobber beam: option %s, running %s, shown %s, CVars saved %s"):format(Show(ns.db.bobberBeam), Show(bs.active), Show(bs.shown), Show(bs.saved))
+  end
   if ns.ShareDiag then out[#out + 1] = ns.ShareDiag() end -- 1.0.1
   if ns.ZoneFishDiag then out[#out + 1] = "zone fish: " .. ns.ZoneFishDiag() end -- 1.2
 end
